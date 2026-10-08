@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14181d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>腹筋カウンター</title>
+<style>
+:root{
+  --bg:#14181d; --panel:#1d232a; --line:#2c353f; --fg:#f2f4f6; --sub:#9aa7b4;
+  --accent:#ffb020; --ok:#4cd08a; --warn:#ff7a59;
+  color-scheme:dark;
+  font-family:-apple-system,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{padding:12px 16px 32px;max-width:560px;margin:0 auto}
+h1{font-size:1.1rem;margin:4px 0 10px;letter-spacing:.04em}
+#stage{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:10px;overflow:hidden}
+#stage video,#stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#stage.mirror video,#stage.mirror canvas{transform:scaleX(-1)}
+#placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--sub);line-height:1.7}
+#bigcount{display:flex;align-items:baseline;justify-content:center;gap:8px;margin:14px 0 2px}
+#bigcount .lbl{font-size:1.5rem;color:var(--fg);font-weight:700}
+#today{text-align:center;font-size:1.25rem;color:var(--sub);margin:2px 0 6px}
+#today b{color:var(--fg);font-size:1.5rem;font-variant-numeric:tabular-nums}
+.note{color:var(--sub);font-size:.95rem;margin:-4px 0 4px;text-align:center}
+#calibStatus{color:var(--sub);font-size:.95rem;margin-top:6px;line-height:1.5}
+#calibBtn{width:100%}
+#count{font-size:6.5rem;font-weight:800;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+#bigcount span{font-size:1.4rem;color:var(--sub)}
+#msg{text-align:center;min-height:1.6em;color:var(--sub);font-size:1.2rem;line-height:1.5}
+#msg.big{font-size:4.5rem;font-weight:800;line-height:1.15}
+#msg.bad{color:var(--warn)}
+#msg.good{color:var(--ok)}
+.row{display:flex;gap:10px;margin:12px 0;flex-wrap:wrap}
+button,select{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:48px}
+button:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.main{flex:1;background:var(--accent);color:#1a1300;font-weight:800;font-size:1.15rem;border-color:var(--accent)}
+button.main.stop{background:var(--warn);border-color:var(--warn);color:#fff}
+.row button.sub{flex:1}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
+.panel h2{font-size:.9rem;margin:0 0 8px;color:var(--sub);font-weight:600}
+label{display:flex;align-items:center;justify-content:space-between;gap:10px}
+select{min-height:44px}
+#angle{font-variant-numeric:tabular-nums;color:var(--sub);text-align:center;font-size:.9rem}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+td{padding:6px 0;border-top:1px solid var(--line)}
+td:last-child{text-align:right;font-weight:700}
+ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
+</style>
+</head>
+<body>
+<h1>腹筋カウンター</h1>
+
+<div id="stage" class="mirror">
+  <video id="video" playsinline muted></video>
+  <canvas id="overlay"></canvas>
+  <div id="placeholder">スタートを押すと<br>カメラで腹筋の回数を数えます</div>
+</div>
+
+<div id="bigcount"><span class="lbl">今回</span><div id="count">0</div><span>回</span></div>
+<div id="today">今日の合計 <b id="todayN">0</b> 回</div>
+<div id="msg">準備ができたらスタートを押してください</div>
+<div id="angle"></div>
+
+<div class="row">
+  <button id="startBtn" class="main">スタート</button>
+</div>
+<div class="row">
+  <button id="minus" class="sub" aria-label="1回へらす">−1</button>
+  <button id="plus" class="sub" aria-label="1回ふやす">＋1</button>
+</div>
+<div class="row">
+  <button id="reset" class="sub">今回を0に戻す</button>
+</div>
+<div class="note">今日の合計は消えません</div>
+
+<div class="panel">
+  <h2>せってい</h2>
+  <label>動きの大きさ
+    <select id="sens">
+      <option value="normal">ふつう（上体を起こす）</option>
+      <option value="small">小さい（クランチ）</option>
+      <option value="strict">きびしめ</option>
+    </select>
+  </label>
+  <div style="height:8px"></div>
+  <label>声で数える
+    <select id="voice"><option value="on">する</option><option value="off">しない</option></select>
+  </label>
+  <div style="height:8px"></div>
+  <label>カメラ
+    <select id="cam"><option value="user">前（自分側）</option><option value="environment">うしろ</option></select>
+  </label>
+  <div style="height:10px"></div>
+  <button id="calibBtn">自分に合わせる</button>
+  <div id="calibStatus"></div>
+</div>
+
+<div class="panel">
+  <h2>きろく</h2>
+  <table id="log"></table>
+</div>
+
+<div class="panel">
+  <h2>つかいかた</h2>
+  <ol>
+    <li>スマホを床かいすに立てかけ、横向きの姿が全身映るようにします。</li>
+    <li>スタートを押し、カメラの使用を許可します。</li>
+    <li>5から1まで数える間に、仰向けになってください。「はじめ」で数え始めます。</li>
+    <li>腹筋をします。起き上がると回数が増えます。</li>
+    <li>数えにくいときは「動きの大きさ」を変えるか、「自分に合わせる」を押して、声の案内にしたがってください。</li>
+    <li>「今回」はこの1回分、「今日の合計」は今日ぜんぶの回数です。</li>
+  </ol>
+</div>
+
+<!-- 回数判定（カメラと関係ない部分） -->
+<script>
+var SENS = {
+  normal: {down: 120, up: 80},
+  small:  {down: 135, up: 110},
+  strict: {down: 110, up: 65}
+};
+var TORSO_MAX_TILT = 30;   // 肩→腰が水平から何度までなら「寝ている」か
+var MOVE_MAX_Y = 0.15;     // 腰の上下の動き（画面の高さに対する割合）
+var MOVE_MAX_X = 0.20;     // 腰の左右の動き（画面の幅に対する割合）
+
+/* update({angle, torsoTilt, hipX, hipY}) -> {counted, angle, state, rejected}
+   torsoTilt: 肩→腰の線の水平からの角度(0〜90度)、hipX/hipY: 0〜1に正規化した腰の位置 */
+function makeCounter(level){
+  var th = SENS[level] || SENS.normal;
+  var state = null, smooth = null, count = 0, anchor = null;
+  return {
+    setLevel: function(l){ th = SENS[l] || SENS.normal; },
+    reset: function(){ state = null; smooth = null; count = 0; anchor = null; },
+    update: function(o){
+      var angle = o.angle;
+      smooth = smooth === null ? angle : smooth * 0.6 + angle * 0.4;
+      var counted = false, rejected = false;
+      if (state !== 'down') {
+        // 「寝た」状態に入れるのは、体が横向きで、角度が大きいときだけ
+        if (smooth >= th.down && o.torsoTilt <= TORSO_MAX_TILT) {
+          state = 'down';
+          anchor = {x: o.hipX, y: o.hipY};
+        }
+      } else if (smooth <= th.up) {
+        var dx = Math.abs(o.hipX - anchor.x), dy = Math.abs(o.hipY - anchor.y);
+        if (dy < MOVE_MAX_Y && dx < MOVE_MAX_X) {
+          state = 'up'; count++; counted = true;
+        } else {
+          state = null; rejected = true;   // 立ち上がったなど。数えない
+        }
+        anchor = null;
+      }
+      return {counted: counted, angle: smooth, state: state, rejected: rejected};
+    }
+  };
+}
+function jointAngle(s, h, k){
+  var ax = s.x - h.x, ay = s.y - h.y, bx = k.x - h.x, by = k.y - h.y;
+  var dot = ax * bx + ay * by;
+  var m = Math.sqrt(ax*ax + ay*ay) * Math.sqrt(bx*bx + by*by);
+  if (!m) return null;
+  var c = Math.max(-1, Math.min(1, dot / m));
+  return Math.acos(c) * 180 / Math.PI;
+}
+/* 肩→腰の線の、水平からの角度(0〜90)。ピクセル座標で渡すこと */
+function torsoTilt(s, h){
+  return Math.atan2(Math.abs(h.y - s.y), Math.abs(h.x - s.x)) * 180 / Math.PI;
+}
+/* 体の向き（左右）を固定する。c = {L:{min,avg}, R:{min,avg}} （3点の見えやすさ） */
+function makeSideLocker(){
+  var side = null, low = 0;
+  function pick(c){
+    var best = null;
+    ['L', 'R'].forEach(function(k){
+      if (c[k].min >= 0.6 && (best === null || c[k].avg > c[best].avg)) best = k;
+    });
+    return best;
+  }
+  return {
+    reset: function(){ side = null; low = 0; },
+    update: function(c){
+      if (side === null) { side = pick(c); low = 0; }
+      else if (c[side].min < 0.3) {
+        if (++low > 30) { side = pick(c); low = 0; }
+      } else { low = 0; }
+      return side;
+    }
+  };
+}
+function median(arr){
+  var a = arr.slice().sort(function(x, y){ return x - y; }), n = a.length;
+  return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+}
+/* 寝た姿勢の角度の列と、起きた姿勢の角度の列から、しきい値を計算する */
+function computeCalibration(lyingAngles, upAngles){
+  var fail = {ok: false};
+  if (!lyingAngles || !upAngles || lyingAngles.length < 5 || upAngles.length < 5) return fail;
+  var lying = median(lyingAngles);
+  // 軽く平滑化（3点移動平均）した列の最小値を「起きた姿勢」とする
+  var sm = [];
+  for (var i = 0; i < upAngles.length; i++) {
+    var lo = Math.max(0, i - 1), hi = Math.min(upAngles.length - 1, i + 1), t = 0;
+    for (var j = lo; j <= hi; j++) t += upAngles[j];
+    sm.push(t / (hi - lo + 1));
+  }
+  var up = Math.min.apply(null, sm);
+  var range = lying - up;
+  if (!(range >= 25)) return fail;
+  return {ok: true, lying: lying, up: up, down: lying - 0.25 * range, upTh: up + 0.25 * range};
+}
+</script>
+
+<script type="module">
+import {PoseLandmarker, FilesetResolver} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+var WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+var MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+
+var COUNTDOWN_SEC = 5;
+var CALIB_SETTLE_MS = 4000, CALIB_LYING_MS = 2000, CALIB_UP_MS = 4000;
+
+var $ = function(id){ return document.getElementById(id); };
+var video = $("video"), canvas = $("overlay"), ctx = canvas.getContext("2d");
+var stage = $("stage"), msgEl = $("msg"), countEl = $("count"), angleEl = $("angle");
+var startBtn = $("startBtn"), calibBtn = $("calibBtn");
+
+var landmarker = null, stream = null, running = false, lastTime = -1, wakeLock = null;
+var counter = makeCounter("normal");
+var locker = makeSideLocker();
+var session = 0;
+var lostFrames = 0;
+var phase = "idle";        // idle / countdown / counting / calib
+var runId = 0;             // スタート・ストップのたびに増やし、古い処理を止める
+var busy = false;          // じゅんび中・合わせ中
+var calibSink = null;      // 合わせ中にフレームごとの値を受け取る関数
+var holdUntil = 0;         // この時刻までは案内文を書きかえない
+
+function msg(text, kind){ msgEl.textContent = text; msgEl.className = kind || ""; }
+// 数えている間だけ案内を出す（カウントダウン・合わせ中は文を守る）
+function hint(text, kind){
+  if (phase === "counting") { if (performance.now() >= holdUntil) msg(text, kind); }
+  else angleEl.textContent = text;
+}
+function wait(ms, id){
+  return new Promise(function(res){
+    var t0 = performance.now();
+    (function tick(){
+      if (id !== runId || !running) return res(false);
+      if (performance.now() - t0 >= ms) return res(true);
+      setTimeout(tick, 50);
+    })();
+  });
+}
+
+/* ---- localStorage（失敗してもだいじょうぶ） ---- */
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+
+/* ---- 記録 ---- */
+function todayKey(){
+  var d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function loadLog(){ try { return JSON.parse(localStorage.getItem("situp-log") || "{}"); } catch(e){ return {}; } }
+function saveLog(o){ try { localStorage.setItem("situp-log", JSON.stringify(o)); } catch(e){} }
+function addToday(n){
+  var log = loadLog(), k = todayKey();
+  log[k] = Math.max(0, (log[k] || 0) + n);
+  saveLog(log);
+  renderLog();
+}
+function renderLog(){
+  var log = loadLog(), keys = Object.keys(log).sort().reverse().slice(0, 7);
+  var html = "";
+  keys.forEach(function(k){
+    var p = k.split("-");
+    var label = Number(p[1]) + "月" + Number(p[2]) + "日" + (k === todayKey() ? "（今日）" : "");
+    html += "<tr><td>" + label + "</td><td>" + log[k] + " 回</td></tr>";
+  });
+  $("log").innerHTML = html || "<tr><td>まだ記録がありません</td><td></td></tr>";
+  $("todayN").textContent = log[todayKey()] || 0;
+}
+
+/* ---- 声 ---- */
+function speakText(t){
+  if ($("voice").value !== "on" || !("speechSynthesis" in window)) return;
+  try {
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(String(t));
+    u.lang = "ja-JP"; u.rate = 1.15;
+    speechSynthesis.speak(u);
+  } catch(e){}
+}
+function speak(n){ speakText(n); }
+
+function setCount(n){ session = Math.max(0, n); countEl.textContent = session; }
+
+/* ---- モデル・カメラ ---- */
+async function loadModel(){
+  if (landmarker) return;
+  var fileset = await FilesetResolver.forVisionTasks(WASM);
+  var opts = function(d){ return {baseOptions: {modelAssetPath: MODEL, delegate: d}, runningMode: "VIDEO", numPoses: 1}; };
+  try { landmarker = await PoseLandmarker.createFromOptions(fileset, opts("GPU")); }
+  catch(e){ landmarker = await PoseLandmarker.createFromOptions(fileset, opts("CPU")); }
+}
+
+async function openCamera(){
+  if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+  var facing = $("cam").value;
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: {facingMode: facing, width: {ideal: 640}, height: {ideal: 480}}, audio: false
+  });
+  video.srcObject = stream;
+  await video.play();
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  stage.classList.toggle("mirror", facing === "user");
+  $("placeholder").hidden = true;
+}
+
+// カメラとモデルを用意して、毎フレームの処理を始める（数えはまだ始めない）
+async function boot(){
+  busy = true; startBtn.disabled = true; calibBtn.disabled = true;
+  try {
+    msg("じゅんび中です。少しお待ちください…");
+    await loadModel();
+    await openCamera();
+    try { wakeLock = await navigator.wakeLock.request("screen"); } catch(e){}
+    locker.reset();
+    runId++; phase = "idle";
+    running = true; lastTime = -1; lostFrames = 0;
+    startBtn.textContent = "ストップ"; startBtn.classList.add("stop");
+    requestAnimationFrame(loop);
+    return true;
+  } catch(e){
+    var m = String(e && e.name || e);
+    if (m === "NotAllowedError") msg("カメラが許可されていません。ブラウザの設定で許可してください", "bad");
+    else if (m === "NotFoundError") msg("カメラが見つかりません", "bad");
+    else msg("開始できませんでした（" + m + "）。通信を確認してもう一度お試しください", "bad");
+    return false;
+  } finally {
+    startBtn.disabled = false; calibBtn.disabled = false; busy = false;
+  }
+}
+
+async function start(){
+  if (busy) return;
+  if (!(await boot())) return;
+  var id = runId;
+  phase = "countdown";
+  counter.reset(); counter.setLevel($("sens").value);
+  for (var n = COUNTDOWN_SEC; n >= 1; n--) {
+    msg(String(n), "big"); speakText(n);
+    if (!(await wait(1000, id))) return;
+  }
+  msg("はじめ", "good big"); speakText("はじめ");
+  holdUntil = performance.now() + 1200;
+  counter.reset(); counter.setLevel($("sens").value);
+  phase = "counting";
+}
+
+function stop(text, kind){
+  runId++; running = false; phase = "idle"; calibSink = null;
+  if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+  stream = null;
+  try { if (wakeLock) wakeLock.release(); } catch(e){}
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  $("placeholder").hidden = false;
+  startBtn.textContent = "スタート"; startBtn.classList.remove("stop");
+  msg(text || (session + " 回でした。おつかれさまでした！"), kind || "good");
+  angleEl.textContent = "";
+}
+
+/* ---- 自分に合わせる ---- */
+function ensureCustomOption(){
+  if ($("sens").querySelector('option[value="custom"]')) return;
+  var o = document.createElement("option");
+  o.value = "custom"; o.textContent = "自分に合わせた設定";
+  $("sens").appendChild(o);
+}
+function applyCalibration(c){
+  SENS.custom = {down: c.down, up: c.upTh};
+  ensureCustomOption();
+  $("calibStatus").textContent = "合わせました（寝た姿勢 " + Math.round(c.lying) + "°／起きた姿勢 " + Math.round(c.up) + "°）";
+}
+function loadCalibration(){
+  try {
+    var c = JSON.parse(lsGet("situp-calib") || "null");
+    if (c && isFinite(c.lying) && isFinite(c.up) && isFinite(c.down) && isFinite(c.upTh) && c.down > c.upTh) { applyCalibration(c); return true; }
+  } catch(e){}
+  return false;
+}
+
+async function calibrate(){
+  if (busy || phase === "countdown" || phase === "calib") return;
+  var startedHere = false;
+  if (!running) {
+    if (!(await boot())) return;
+    startedHere = true;
+  }
+  var id = runId, prev = phase;
+  busy = true; calibBtn.disabled = true;
+  phase = "calib"; locker.reset();
+  var finish = function(text, kind){
+    busy = false; calibBtn.disabled = false;
+    if (startedHere) stop(text, kind);
+    else {
+      phase = prev;
+      if (prev === "counting") { counter.reset(); counter.setLevel($("sens").value); }
+      msg(text, kind);
+    }
+  };
+  var lying = [], ups = [];
+
+  msg("仰向けに寝て、じっとしてください", "good"); speakText("仰向けに寝て、じっとしてください");
+  if (!(await wait(CALIB_SETTLE_MS, id))) { busy = false; calibBtn.disabled = false; return; }
+  calibSink = function(a, t){ if (t <= TORSO_MAX_TILT) lying.push(a); };
+  var ok = await wait(CALIB_LYING_MS, id);
+  calibSink = null;
+  if (!ok) { busy = false; calibBtn.disabled = false; return; }
+
+  msg("起き上がって、そのまま止まってください", "good"); speakText("起き上がって、そのまま止まってください");
+  calibSink = function(a){ ups.push(a); };
+  ok = await wait(CALIB_UP_MS, id);
+  calibSink = null;
+  if (!ok) { busy = false; calibBtn.disabled = false; return; }
+
+  var c = computeCalibration(lying, ups);
+  if (!c.ok) {
+    $("calibStatus").textContent = "";
+    finish("うまく測れませんでした。もう一度お試しください", "bad");
+    speakText("うまく測れませんでした");
+    return;
+  }
+  lsSet("situp-calib", JSON.stringify({lying: c.lying, up: c.up, down: c.down, upTh: c.upTh}));
+  applyCalibration(c);
+  $("sens").value = "custom"; lsSet("situp-sens", "custom");
+  counter.setLevel("custom");
+  var text = "合わせました（寝た姿勢 " + Math.round(c.lying) + "°／起きた姿勢 " + Math.round(c.up) + "°）";
+  finish(text, "good");
+  speakText("合わせました");
+}
+
+/* ---- 毎フレーム ---- */
+function loop(){
+  if (!running) return;
+  if (video.readyState >= 2 && video.currentTime !== lastTime) {
+    lastTime = video.currentTime;
+    var res = landmarker.detectForVideo(video, performance.now());
+    handle(res);
+  }
+  requestAnimationFrame(loop);
+}
+
+var LEFT = [11, 23, 25], RIGHT = [12, 24, 26];
+
+function handle(res){
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  var lm = res.landmarks && res.landmarks[0];
+  if (!lm) {
+    if (++lostFrames > 20) hint("からだが映っていません。全身が入るようにしてください", "bad");
+    return;
+  }
+  lostFrames = 0;
+  var W = canvas.width, H = canvas.height;
+  var stats = function(a){
+    var v = a.map(function(i){ return lm[i].visibility; });
+    return {min: Math.min.apply(null, v), avg: (v[0] + v[1] + v[2]) / 3};
+  };
+  var key = locker.update({L: stats(LEFT), R: stats(RIGHT)});
+
+  // 全体の点
+  ctx.fillStyle = "rgba(255,255,255,.45)";
+  lm.forEach(function(p){ ctx.beginPath(); ctx.arc(p.x * W, p.y * H, 3, 0, 6.283); ctx.fill(); });
+
+  if (!key) { hint("肩・腰・ひざが映るようにしてください", "bad"); return; }
+  var side = key === "L" ? LEFT : RIGHT;
+  var minVis = stats(side).min;
+  if (minVis < 0.4) { hint("肩・腰・ひざが映るようにしてください", "bad"); return; }
+
+  var pts = side.map(function(i){ return {x: lm[i].x * W, y: lm[i].y * H}; });
+  var a = jointAngle(pts[0], pts[1], pts[2]);
+  if (a === null) return;
+  var tilt = torsoTilt(pts[0], pts[1]);
+
+  // 判定に使う3点を目立たせる
+  ctx.strokeStyle = "#ffb020"; ctx.lineWidth = 5; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.lineTo(pts[2].x, pts[2].y); ctx.stroke();
+  ctx.fillStyle = "#ffb020";
+  pts.forEach(function(p){ ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 6.283); ctx.fill(); });
+
+  if (calibSink) calibSink(a, tilt);
+  if (phase !== "counting") { angleEl.textContent = "からだの角度 " + Math.round(a) + "°"; return; }
+
+  var r = counter.update({angle: a, torsoTilt: tilt, hipX: lm[side[1]].x, hipY: lm[side[1]].y});
+  angleEl.textContent = "からだの角度 " + Math.round(r.angle) + "°";
+  if (r.counted) {
+    setCount(session + 1);
+    addToday(1);
+    speak(session);
+    msg(session + " 回", "good");
+    holdUntil = performance.now() + 800;
+  } else if (performance.now() < holdUntil) {
+    // 直前の案内を少し残す
+  } else if (r.state === "down") {
+    msg("起き上がってください", "");
+  } else if (r.state === "up") {
+    msg("ゆっくり戻ってください", "");
+  } else {
+    msg("仰向けになってください", "");
+  }
+}
+
+/* ---- ボタン ---- */
+startBtn.addEventListener("click", function(){ running ? stop() : start(); });
+calibBtn.addEventListener("click", calibrate);
+$("plus").addEventListener("click", function(){ setCount(session + 1); addToday(1); });
+$("minus").addEventListener("click", function(){ if (session > 0) { setCount(session - 1); addToday(-1); } });
+$("reset").addEventListener("click", function(){ setCount(0); counter.reset(); counter.setLevel($("sens").value); msg("今回を0に戻しました（今日の合計はそのままです）"); });
+$("sens").addEventListener("change", function(){ counter.setLevel($("sens").value); lsSet("situp-sens", $("sens").value); });
+$("voice").addEventListener("change", function(){ lsSet("situp-voice", $("voice").value); });
+$("cam").addEventListener("change", async function(){
+  lsSet("situp-cam", $("cam").value);
+  if (running) { try { await openCamera(); } catch(e){ msg("カメラを切り替えられませんでした", "bad"); } }
+});
+document.addEventListener("visibilitychange", async function(){
+  if (running && document.visibilityState === "visible") { try { wakeLock = await navigator.wakeLock.request("screen"); } catch(e){} }
+});
+
+/* ---- 前回の設定 ---- */
+var hasCalib = loadCalibration();
+var s = lsGet("situp-sens"); if (s && (s !== "custom" || hasCalib) && $("sens").querySelector('option[value="' + s + '"]')) $("sens").value = s;
+var v = lsGet("situp-voice"); if (v) $("voice").value = v;
+var c = lsGet("situp-cam"); if (c) $("cam").value = c;
+counter.setLevel($("sens").value);
+renderLog();
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).catch(function(){}); }
+</script>
+</body>
+</html>
