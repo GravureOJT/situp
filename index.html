@@ -582,7 +582,24 @@ function handle(res){
 }
 
 /* ---- ボタン ---- */
-startBtn.addEventListener("click", function(){ running ? stop() : start(); });
+/* ---- 横向きに固定（スマホの自動回転がオフでも横にする） ---- */
+function goLandscape(){
+  try {
+    var lock = function(){ if (screen.orientation && screen.orientation.lock) return screen.orientation.lock("landscape").catch(function(){}); };
+    var standalone = window.matchMedia && matchMedia("(display-mode: standalone)").matches;
+    if (!standalone && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen({navigationUI: "hide"}).then(lock).catch(function(){});
+    } else { lock(); }
+  } catch(e){}
+}
+function leaveLandscape(){
+  try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch(e){}
+  try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function(){}); } catch(e){}
+}
+startBtn.addEventListener("click", function(){
+  if (running) { stop(); leaveLandscape(); }
+  else { goLandscape(); start(); }
+});
 calibBtn.addEventListener("click", calibrate);
 pauseBtn.addEventListener("click", function(){ phase === "paused" ? resume() : pause(); });
 $("plus").addEventListener("click", function(){ setCount(session + 1); addToday(1); });
