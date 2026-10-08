@@ -42,6 +42,7 @@ button:focus-visible,select:focus-visible{outline:3px solid var(--accent);outlin
 button.main{flex:1;background:var(--accent);color:#1a1300;font-weight:800;font-size:1.15rem;border-color:var(--accent)}
 button.main.stop{background:var(--warn);border-color:var(--warn);color:#fff}
 .row button.sub{flex:1}
+.row button.wide{flex:2;white-space:nowrap}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
 .panel h2{font-size:.9rem;margin:0 0 8px;color:var(--sub);font-weight:600}
 label{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -51,16 +52,43 @@ table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 td{padding:6px 0;border-top:1px solid var(--line)}
 td:last-child{text-align:right;font-weight:700}
 ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
+.right{min-width:0}
+/* 横向き（Redmi Note 11 Pro：20:9、横置きで約873×393の画面）
+   左にワイドなカメラ、右に回数とボタン。1画面に収める */
+@media (orientation: landscape) and (max-height: 600px){
+  body{max-width:none;padding-block:6px 24px}
+  h1{display:none}
+  .top{display:grid;grid-template-columns:auto minmax(270px,1fr);gap:14px;align-items:start}
+  #stage{aspect-ratio:16/9;height:calc(100dvh - 12px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));width:auto;max-width:62vw}
+  #bigcount{margin:0}
+  #count{font-size:4rem}
+  #bigcount .lbl{font-size:1.2rem}
+  #today{font-size:1rem;margin:0}
+  #today b{font-size:1.15rem}
+  #msg{font-size:1rem;min-height:1.4em;line-height:1.35}
+  #msg.big{font-size:2.6rem}
+  #angle{font-size:.8rem;min-height:1.1em}
+  .row{margin:6px 0;gap:6px}
+  button{min-height:42px;padding:6px 10px}
+  button.main{font-size:1.05rem}
+  .note{margin:0;font-size:.8rem}
+  .panel{max-width:760px}
+}
+
 </style>
 </head>
 <body>
 <h1>腹筋カウンター</h1>
 
+<div class="top">
+<div class="left">
 <div id="stage" class="mirror">
   <video id="video" playsinline muted></video>
   <canvas id="overlay"></canvas>
   <div id="placeholder">スタートを押すと<br>カメラで腹筋の回数を数えます</div>
 </div>
+</div>
+<div class="right">
 
 <div id="bigcount"><span class="lbl">今回</span><div id="count">0</div><span>回</span></div>
 <div id="today">今日の合計 <b id="todayN">0</b> 回</div>
@@ -73,11 +101,11 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 <div class="row">
   <button id="minus" class="sub" aria-label="1回へらす">−1</button>
   <button id="plus" class="sub" aria-label="1回ふやす">＋1</button>
-</div>
-<div class="row">
-  <button id="reset" class="sub">今回を0に戻す</button>
+  <button id="reset" class="sub wide">今回を0に戻す</button>
 </div>
 <div class="note">今日の合計は消えません</div>
+</div>
+</div>
 
 <div class="panel">
   <h2>せってい</h2>
@@ -109,7 +137,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 <div class="panel">
   <h2>つかいかた</h2>
   <ol>
-    <li>スマホを床かいすに立てかけ、横向きの姿が全身映るようにします。</li>
+    <li>スマホを横向きにして床かいすに立てかけ、寝た姿が肩からひざまで映るようにします。</li>
     <li>スタートを押し、カメラの使用を許可します。</li>
     <li>5から1まで数える間に、仰向けになってください。「はじめ」で数え始めます。</li>
     <li>腹筋をします。起き上がると回数が増えます。</li>
@@ -314,7 +342,7 @@ async function openCamera(){
   if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
   var facing = $("cam").value;
   stream = await navigator.mediaDevices.getUserMedia({
-    video: {facingMode: facing, width: {ideal: 640}, height: {ideal: 480}}, audio: false
+    video: {facingMode: facing, width: {ideal: 960}, height: {ideal: 540}}, audio: false
   });
   video.srcObject = stream;
   await video.play();
@@ -331,6 +359,7 @@ async function boot(){
     await loadModel();
     await openCamera();
     try { wakeLock = await navigator.wakeLock.request("screen"); } catch(e){}
+    try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(function(){}); } catch(e){}
     locker.reset();
     runId++; phase = "idle";
     running = true; lastTime = -1; lostFrames = 0;
@@ -451,6 +480,9 @@ function loop(){
   if (!running) return;
   if (video.readyState >= 2 && video.currentTime !== lastTime) {
     lastTime = video.currentTime;
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    }
     var res = landmarker.detectForVideo(video, performance.now());
     handle(res);
   }
