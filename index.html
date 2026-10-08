@@ -44,6 +44,7 @@ button.main.stop{background:var(--warn);border-color:var(--warn);color:#fff}
 .row button.sub{flex:1}
 .row button.wide{flex:2;white-space:nowrap}
 .row button.pause{flex:1;font-weight:800;font-size:1.1rem;background:var(--panel);border:2px solid var(--accent);color:var(--accent);white-space:nowrap}
+.row button.land{flex:1;background:var(--accent);color:#1a1300;border-color:var(--accent);font-weight:800;font-size:1.15rem}
 .row button.pause.resume{background:var(--ok);border-color:var(--ok);color:#06210f}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
 .panel h2{font-size:.9rem;margin:0 0 8px;color:var(--sub);font-weight:600}
@@ -104,6 +105,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   <button id="startBtn" class="main">スタート</button>
   <button id="pauseBtn" class="pause" hidden>一時停止</button>
 </div>
+<div class="row"><button id="landBtn" class="land" hidden>横向きにする</button></div>
 <div class="row">
   <button id="minus" class="sub" aria-label="1回へらす">−1</button>
   <button id="plus" class="sub" aria-label="1回ふやす">＋1</button>
@@ -673,6 +675,17 @@ function goLandscape(){
     } else { lock(); }
   } catch(e){}
 }
+/* 許可の確認などで横向きが外れたら、「横向きにする」ボタンを出す */
+var landBtn = $("landBtn");
+function updateLandBtn(){
+  var standalone = window.matchMedia && matchMedia("(display-mode: standalone)").matches;
+  var portrait = window.matchMedia && matchMedia("(orientation: portrait)").matches;
+  landBtn.hidden = !(running && portrait && !standalone);
+}
+landBtn.addEventListener("click", function(){ goLandscape(); });
+document.addEventListener("fullscreenchange", updateLandBtn);
+window.addEventListener("resize", updateLandBtn);
+setInterval(updateLandBtn, 1000);
 function leaveLandscape(){
   try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch(e){}
   try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function(){}); } catch(e){}
