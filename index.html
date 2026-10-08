@@ -20,7 +20,7 @@ html,body{margin:0;background:var(--bg);color:var(--fg)}
 body{padding:12px 16px 32px;max-width:560px;margin:0 auto}
 h1{font-size:1.1rem;margin:4px 0 10px;letter-spacing:.04em}
 #stage{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:10px;overflow:hidden}
-#stage video,#stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#stage video,#stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #stage.mirror video,#stage.mirror canvas{transform:scaleX(-1)}
 #placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--sub);line-height:1.7}
 #bigcount{display:flex;align-items:baseline;justify-content:center;gap:8px;margin:14px 0 2px}
@@ -30,6 +30,7 @@ h1{font-size:1.1rem;margin:4px 0 10px;letter-spacing:.04em}
 .note{color:var(--sub);font-size:.95rem;margin:-4px 0 4px;text-align:center}
 #calibStatus{color:var(--sub);font-size:.95rem;margin-top:6px;line-height:1.5}
 #calibBtn{width:100%}
+#camInfo{color:var(--sub);font-size:.85rem;margin-top:6px;line-height:1.5}
 #count{font-size:6.5rem;font-weight:800;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
 #bigcount span{font-size:1.4rem;color:var(--sub)}
 #msg{text-align:center;min-height:1.6em;color:var(--sub);font-size:1.2rem;line-height:1.5}
@@ -64,7 +65,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   body{max-width:none;padding-block:6px 24px}
   h1{display:none}
   .top{display:grid;grid-template-columns:auto minmax(270px,1fr);gap:14px;align-items:start}
-  #stage{aspect-ratio:16/9;height:calc(100dvh - 12px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));width:auto;max-width:62vw}
+  #stage{aspect-ratio:16/9;height:auto;width:min(62vw, calc((100dvh - 12px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)) * 16 / 9))}
   #bigcount{margin:0}
   #count{font-size:4rem}
   #bigcount .lbl{font-size:1.2rem}
@@ -117,6 +118,13 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 
 <div class="panel">
   <h2>せってい</h2>
+  <label>かぞえかた
+    <select id="mode">
+      <option value="height">高さ（おすすめ）</option>
+      <option value="angle">ひざと体の角度</option>
+    </select>
+  </label>
+  <div style="height:8px"></div>
   <label>動きの大きさ
     <select id="sens">
       <option value="normal">ふつう（上体を起こす）</option>
@@ -132,6 +140,11 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   <label>カメラ
     <select id="cam"><option value="user">前（自分側）</option><option value="environment">うしろ</option></select>
   </label>
+  <div style="height:8px"></div>
+  <label>カメラの広さ
+    <select id="zoom"><option value="wide">いちばん広く</option><option value="normal">ふつう</option></select>
+  </label>
+  <div id="camInfo"></div>
   <div style="height:8px"></div>
   <label>声で操作する
     <select id="vctl"><option value="on">する</option><option value="off">しない</option></select>
@@ -152,7 +165,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
     <li>スマホを横向きにして床かいすに立てかけ、寝た姿が肩からひざまで映るようにします。</li>
     <li>スタートを押し、カメラとマイクの使用を許可します。仰向けになって準備ができたら「スタート」と言います（声の操作が「しない」のときは、すぐに5から数え始めます）。</li>
     <li>5から1まで数える間に仰向けになります。「はじめ」で数え始めます。</li>
-    <li>腹筋をします。起き上がると回数が増えます。休むときは「ストップ」と言うか「一時停止」を押し、続けるときは「スタート」と言うか「再開」を押します（3つ数えてから続きを数えます）。終わるときは「おわり」と言います。</li>
+    <li>腹筋をします。画面の緑の点線より肩が上がると回数が増えます（「かぞえかた」を「ひざと体の角度」にすると、角度で数えます）。休むときは「ストップ」と言うか「一時停止」を押し、続けるときは「スタート」と言うか「再開」を押します（3つ数えてから続きを数えます）。終わるときは「おわり」と言います。</li>
     <li>数えにくいときは「動きの大きさ」を変えるか、「自分に合わせる」を押して、声の案内にしたがってください。</li>
     <li>「今回」はこの1回分、「今日の合計」は今日ぜんぶの回数です。</li>
   </ol>
@@ -165,9 +178,9 @@ var SENS = {
   small:  {down: 135, up: 110},
   strict: {down: 110, up: 65}
 };
-var TORSO_MAX_TILT = 30;   // 肩→腰が水平から何度までなら「寝ている」か
-var MOVE_MAX_Y = 0.15;     // 腰の上下の動き（画面の高さに対する割合）
-var MOVE_MAX_X = 0.20;     // 腰の左右の動き（画面の幅に対する割合）
+var TORSO_MAX_TILT = 40;   // 肩→腰が水平から何度までなら「寝ている」か
+var MOVE_MAX_Y = 0.25;     // 腰の上下の動き（画面の高さに対する割合）
+var MOVE_MAX_X = 0.30;     // 腰の左右の動き（画面の幅に対する割合）
 
 /* update({angle, torsoTilt, hipX, hipY}) -> {counted, angle, state, rejected}
    torsoTilt: 肩→腰の線の水平からの角度(0〜90度)、hipX/hipY: 0〜1に正規化した腰の位置 */
@@ -212,13 +225,72 @@ function jointAngle(s, h, k){
 function torsoTilt(s, h){
   return Math.atan2(Math.abs(h.y - s.y), Math.abs(h.x - s.x)) * 180 / Math.PI;
 }
+/* ---- 高さで数える：肩が「寝ているときの高さ」から胴の長さの何割まで上がったかを見る ----
+   足と体が一緒に動いて角度が変わらない人でも数えられる */
+var HSENS = {
+  normal: {up: 0.35, reset: 0.15},
+  small:  {up: 0.18, reset: 0.08},
+  strict: {up: 0.50, reset: 0.25}
+};
+var H_MAX_RISE = 1.4;       // 肩がこれ以上（胴の長さ比）上がったら、立ち上がりとみなして数えない
+var H_MAX_HIP_RISE = 0.6;   // 腰がこれ以上上がったときも数えない（立ち上がり）
+var H_DECAY = 0.004;        // 寝た高さの基準が、1コマごとに今の高さへ近づく割合
+var H_BASE_STEP = 0.03;     // 基準が1コマで下がれる最大（胴の長さ比）
+var H_HOLD_FRAMES = 4;      // 目安の高さを何コマ続けて超えたら1回と数えるか（1コマだけの読み違いを防ぐ）
+var H_UNDO_FRAMES = 90;     // 数えた直後（約3秒）に立ち上がったら、その1回を取り消す
+
+/* update({shoulderY, hipY, len}) -> {counted, rise, up, state, rejected, baseY, len}
+   shoulderY/hipY は画面の上下位置（ピクセル、下ほど大きい）、len は肩〜腰の長さ（ピクセル） */
+function makeHeightCounter(level){
+  var th = HSENS[level] || HSENS.normal;
+  var sy = null, hy = null, len = null, base = null, hbase = null, armed = true, above = 0, since = null;
+  function follow(b, v, step){
+    if (b === null) return v;
+    if (v > b) return Math.min(v, b + step);   // 寝た側（下）へはすぐ追いつく（ただし1コマの上限あり）
+    return b + (v - b) * H_DECAY;               // 起きた側（上）へはゆっくり
+  }
+  return {
+    setLevel: function(l){ th = HSENS[l] || HSENS.normal; },
+    reset: function(){ sy = null; hy = null; len = null; base = null; hbase = null; armed = true; above = 0; since = null; },
+    update: function(o){
+      if (!(o.len > 20)) return {counted: false, rise: 0, up: th.up, state: armed ? 'down' : 'up', rejected: false, baseY: base, len: len};
+      sy = sy === null ? o.shoulderY : sy * 0.5 + o.shoulderY * 0.5;
+      hy = hy === null ? o.hipY : hy * 0.5 + o.hipY * 0.5;
+      len = len === null ? o.len : len * 0.8 + o.len * 0.2;
+      base = follow(base, sy, H_BASE_STEP * len);
+      hbase = follow(hbase, hy, H_BASE_STEP * len);
+      var rise = (base - sy) / len, hipRise = (hbase - hy) / len;
+      var counted = false, rejected = false, retracted = false;
+      var tooHigh = rise > H_MAX_RISE || hipRise > H_MAX_HIP_RISE;   // 立ち上がり
+      if (since !== null) {
+        since++;
+        if (tooHigh) { retracted = true; since = null; }       // 数えた直後に立ち上がった → 取り消し
+        else if (since > H_UNDO_FRAMES) since = null;
+      }
+      if (armed) {
+        if (rise >= th.up && !tooHigh) {
+          if (++above >= H_HOLD_FRAMES) { armed = false; above = 0; counted = true; since = 0; }
+        } else if (rise >= th.up) {
+          armed = false; above = 0; rejected = true;
+        } else {
+          above = 0;
+        }
+      } else {
+        above = 0;
+        if (rise <= th.reset) armed = true;
+      }
+      return {counted: counted, retracted: retracted, rise: rise, up: th.up, state: armed ? 'down' : 'up', rejected: rejected, baseY: base, len: len};
+    }
+  };
+}
+
 /* 体の向き（左右）を固定する。c = {L:{min,avg}, R:{min,avg}} （3点の見えやすさ） */
 function makeSideLocker(){
   var side = null, low = 0;
   function pick(c){
     var best = null;
     ['L', 'R'].forEach(function(k){
-      if (c[k].min >= 0.6 && (best === null || c[k].avg > c[best].avg)) best = k;
+      if (c[k].min >= 0.5 && (best === null || c[k].avg > c[best].avg)) best = k;
     });
     return best;
   }
@@ -262,6 +334,25 @@ function computeCalibration(lyingAngles, upAngles){
   if (!(range >= 25)) return fail;
   return {ok: true, lying: lying, up: up, down: lying - 0.25 * range, upTh: up + 0.25 * range};
 }
+/* 寝ているときの肩の高さ(lyY)・肩〜腰の長さ(lyLen)と、起きたときの肩の高さ(upY)から、数える高さを計算する */
+function computeHeightCalibration(lyY, lyLen, upY){
+  var fail = {ok: false};
+  if (!lyY || !lyLen || !upY || lyY.length < 5 || lyLen.length < 5 || upY.length < 5) return fail;
+  var base = median(lyY), len = median(lyLen);
+  if (!(len > 20)) return fail;
+  var sm = [];
+  for (var i = 0; i < upY.length; i++) {
+    var lo = Math.max(0, i - 1), hi = Math.min(upY.length - 1, i + 1), t = 0;
+    for (var j = lo; j <= hi; j++) t += upY[j];
+    sm.push(t / (hi - lo + 1));
+  }
+  var maxRise = (base - Math.min.apply(null, sm)) / len;
+  if (!(maxRise >= 0.10)) return fail;
+  var up = Math.max(0.07, 0.55 * maxRise);
+  var reset = Math.min(0.25 * maxRise, up - 0.05);
+  if (!(reset >= 0.02)) return fail;
+  return {ok: true, maxRise: maxRise, up: up, reset: reset};
+}
 </script>
 
 <script type="module">
@@ -280,6 +371,9 @@ var startBtn = $("startBtn"), calibBtn = $("calibBtn"), pauseBtn = $("pauseBtn")
 
 var landmarker = null, stream = null, running = false, lastTime = -1, wakeLock = null;
 var counter = makeCounter("normal");
+var hcounter = makeHeightCounter("normal");
+function setLevelAll(l){ counter.setLevel(l); hcounter.setLevel(l); }
+function resetCounters(){ counter.reset(); hcounter.reset(); setLevelAll($("sens").value); }
 var locker = makeSideLocker();
 var session = 0;
 var lostFrames = 0;
@@ -355,7 +449,7 @@ function setCount(n){ session = Math.max(0, n); countEl.textContent = session; }
 async function loadModel(){
   if (landmarker) return;
   var fileset = await FilesetResolver.forVisionTasks(WASM);
-  var opts = function(d){ return {baseOptions: {modelAssetPath: MODEL, delegate: d}, runningMode: "VIDEO", numPoses: 1}; };
+  var opts = function(d){ return {baseOptions: {modelAssetPath: MODEL, delegate: d}, runningMode: "VIDEO", numPoses: 1, minPoseDetectionConfidence: 0.4, minPosePresenceConfidence: 0.4, minTrackingConfidence: 0.4}; };
   try { landmarker = await PoseLandmarker.createFromOptions(fileset, opts("GPU")); }
   catch(e){ landmarker = await PoseLandmarker.createFromOptions(fileset, opts("CPU")); }
 }
@@ -371,6 +465,28 @@ async function openCamera(){
   canvas.width = video.videoWidth; canvas.height = video.videoHeight;
   stage.classList.toggle("mirror", facing === "user");
   $("placeholder").hidden = true;
+  await applyZoom(stream.getVideoTracks()[0]);
+}
+
+/* カメラのズームをいちばん広くする（このスマホのカメラが対応しているときだけ） */
+async function applyZoom(track){
+  var el = $("camInfo"), info = "";
+  try {
+    var caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (caps.zoom && $("zoom").value === "wide") {
+      await track.applyConstraints({advanced: [{zoom: caps.zoom.min}]});
+    } else if (caps.zoom) {
+      await track.applyConstraints({advanced: [{zoom: Math.min(Math.max(1, caps.zoom.min), caps.zoom.max)}]});
+    }
+    var st = track.getSettings ? track.getSettings() : {};
+    var z = (caps.zoom && st.zoom) ? "　ズーム " + Number(st.zoom).toFixed(1) + "倍" : "";
+    info = "カメラ " + (st.width || "?") + "×" + (st.height || "?") + z;
+    if (!caps.zoom) info += "\nこのカメラは広さを変えられません。もっと離して置いてください。";
+  } catch(e){
+    info = "カメラの広さを変えられませんでした。もっと離して置いてください。";
+  }
+  el.style.whiteSpace = "pre-line";
+  el.textContent = info;
 }
 
 // カメラとモデルを用意して、毎フレームの処理を始める（数えはまだ始めない）
@@ -413,14 +529,14 @@ async function start(){
 async function beginCountdown(){
   var id = runId;
   phase = "countdown";
-  counter.reset(); counter.setLevel($("sens").value);
+  resetCounters();
   for (var n = COUNTDOWN_SEC; n >= 1; n--) {
     msg(String(n), "big"); speakText(n);
     if (!(await wait(1000, id))) return;
   }
   msg("はじめ", "good big"); speakText("はじめ");
   holdUntil = performance.now() + 1200;
-  counter.reset(); counter.setLevel($("sens").value);
+  resetCounters();
   phase = "counting";
   setPauseBtn(false); pauseBtn.hidden = false;
 }
@@ -502,7 +618,7 @@ async function resume(){
   pauseBtn.disabled = false;
   msg("さいかい", "good big"); speakText("再開");
   holdUntil = performance.now() + 1200;
-  counter.reset(); counter.setLevel($("sens").value);
+  resetCounters();
   phase = "counting";
   setPauseBtn(false);
 }
@@ -528,15 +644,24 @@ function ensureCustomOption(){
   o.value = "custom"; o.textContent = "自分に合わせた設定";
   $("sens").appendChild(o);
 }
+function calibText(c){
+  var p = [];
+  if (c.height) p.push("起き上がりの高さ " + Math.round(c.height.maxRise * 100) + "％ → 数える高さ " + Math.round(c.height.up * 100) + "％");
+  if (c.angle) p.push("角度 寝た姿勢 " + Math.round(c.angle.lying) + "°／起きた姿勢 " + Math.round(c.angle.up) + "°");
+  return "合わせました（" + p.join("　") + "）";
+}
 function applyCalibration(c){
-  SENS.custom = {down: c.down, up: c.upTh};
+  SENS.custom = c.angle ? {down: c.angle.down, up: c.angle.upTh} : {down: SENS.normal.down, up: SENS.normal.up};
+  HSENS.custom = c.height ? {up: c.height.up, reset: c.height.reset} : {up: HSENS.normal.up, reset: HSENS.normal.reset};
   ensureCustomOption();
-  $("calibStatus").textContent = "合わせました（寝た姿勢 " + Math.round(c.lying) + "°／起きた姿勢 " + Math.round(c.up) + "°）";
+  $("calibStatus").textContent = calibText(c);
 }
 function loadCalibration(){
   try {
-    var c = JSON.parse(lsGet("situp-calib") || "null");
-    if (c && isFinite(c.lying) && isFinite(c.up) && isFinite(c.down) && isFinite(c.upTh) && c.down > c.upTh) { applyCalibration(c); return true; }
+    var c = JSON.parse(lsGet("situp-calib2") || "null");
+    var okA = !!(c && c.angle && isFinite(c.angle.lying) && isFinite(c.angle.up) && isFinite(c.angle.down) && isFinite(c.angle.upTh) && c.angle.down > c.angle.upTh);
+    var okH = !!(c && c.height && isFinite(c.height.maxRise) && isFinite(c.height.up) && isFinite(c.height.reset) && c.height.up > c.height.reset);
+    if (okA || okH) { applyCalibration({angle: okA ? c.angle : null, height: okH ? c.height : null}); return true; }
   } catch(e){}
   return false;
 }
@@ -556,37 +681,42 @@ async function calibrate(){
     if (startedHere) stop(text, kind);
     else {
       phase = prev;
-      if (prev === "counting") { counter.reset(); counter.setLevel($("sens").value); }
+      if (prev === "counting") { resetCounters(); }
       msg(text, kind);
     }
   };
-  var lying = [], ups = [];
+  var lying = [], ups = [], lyY = [], lyLen = [], upY = [];
 
   msg("仰向けに寝て、じっとしてください", "good"); speakText("仰向けに寝て、じっとしてください");
   if (!(await wait(CALIB_SETTLE_MS, id))) { busy = false; calibBtn.disabled = false; return; }
-  calibSink = function(a, t){ if (t <= TORSO_MAX_TILT) lying.push(a); };
+  calibSink = function(a, t, sy, len){ lyY.push(sy); lyLen.push(len); if (t <= TORSO_MAX_TILT) lying.push(a); };
   var ok = await wait(CALIB_LYING_MS, id);
   calibSink = null;
   if (!ok) { busy = false; calibBtn.disabled = false; return; }
 
   msg("起き上がって、そのまま止まってください", "good"); speakText("起き上がって、そのまま止まってください");
-  calibSink = function(a){ ups.push(a); };
+  calibSink = function(a, t, sy){ ups.push(a); upY.push(sy); };
   ok = await wait(CALIB_UP_MS, id);
   calibSink = null;
   if (!ok) { busy = false; calibBtn.disabled = false; return; }
 
-  var c = computeCalibration(lying, ups);
-  if (!c.ok) {
+  var ca = computeCalibration(lying, ups);
+  var ch = computeHeightCalibration(lyY, lyLen, upY);
+  if (!ca.ok && !ch.ok) {
     $("calibStatus").textContent = "";
     finish("うまく測れませんでした。もう一度お試しください", "bad");
     speakText("うまく測れませんでした");
     return;
   }
-  lsSet("situp-calib", JSON.stringify({lying: c.lying, up: c.up, down: c.down, upTh: c.upTh}));
-  applyCalibration(c);
+  var saved = {
+    angle: ca.ok ? {lying: ca.lying, up: ca.up, down: ca.down, upTh: ca.upTh} : null,
+    height: ch.ok ? {maxRise: ch.maxRise, up: ch.up, reset: ch.reset} : null
+  };
+  lsSet("situp-calib2", JSON.stringify(saved));
+  applyCalibration(saved);
   $("sens").value = "custom"; lsSet("situp-sens", "custom");
-  counter.setLevel("custom");
-  var text = "合わせました（寝た姿勢 " + Math.round(c.lying) + "°／起きた姿勢 " + Math.round(c.up) + "°）";
+  setLevelAll("custom");
+  var text = calibText(saved);
   finish(text, "good");
   speakText("合わせました");
 }
@@ -609,6 +739,8 @@ var LEFT = [11, 23, 25], RIGHT = [12, 24, 26];
 
 function handle(res){
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  var mode = $("mode").value;
+  var needMsg = mode === "height" ? "肩と腰が映るようにしてください" : "肩・腰・ひざが映るようにしてください";
   var lm = res.landmarks && res.landmarks[0];
   if (!lm) {
     if (++lostFrames > 20) hint("からだが映っていません。全身が入るようにしてください", "bad");
@@ -616,9 +748,11 @@ function handle(res){
   }
   lostFrames = 0;
   var W = canvas.width, H = canvas.height;
+  var need = mode === "height" ? 2 : 3;   // 高さで数えるときは、ひざは映らなくてもよい
   var stats = function(a){
-    var v = a.map(function(i){ return lm[i].visibility; });
-    return {min: Math.min.apply(null, v), avg: (v[0] + v[1] + v[2]) / 3};
+    var v = a.slice(0, need).map(function(i){ return lm[i].visibility; });
+    var sum = 0; v.forEach(function(x){ sum += x; });
+    return {min: Math.min.apply(null, v), avg: sum / v.length};
   };
   var key = locker.update({L: stats(LEFT), R: stats(RIGHT)});
 
@@ -626,10 +760,10 @@ function handle(res){
   ctx.fillStyle = "rgba(255,255,255,.45)";
   lm.forEach(function(p){ ctx.beginPath(); ctx.arc(p.x * W, p.y * H, 3, 0, 6.283); ctx.fill(); });
 
-  if (!key) { hint("肩・腰・ひざが映るようにしてください", "bad"); return; }
+  if (!key) { hint(needMsg, "bad"); return; }
   var side = key === "L" ? LEFT : RIGHT;
   var minVis = stats(side).min;
-  if (minVis < 0.4) { hint("肩・腰・ひざが映るようにしてください", "bad"); return; }
+  if (minVis < 0.4) { hint(needMsg, "bad"); return; }
 
   var pts = side.map(function(i){ return {x: lm[i].x * W, y: lm[i].y * H}; });
   var a = jointAngle(pts[0], pts[1], pts[2]);
@@ -638,15 +772,37 @@ function handle(res){
 
   // 判定に使う3点を目立たせる
   ctx.strokeStyle = "#ffb020"; ctx.lineWidth = 5; ctx.lineCap = "round";
-  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.lineTo(pts[2].x, pts[2].y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); if (mode !== "height") ctx.lineTo(pts[2].x, pts[2].y); ctx.stroke();
   ctx.fillStyle = "#ffb020";
-  pts.forEach(function(p){ ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 6.283); ctx.fill(); });
+  pts.slice(0, need).forEach(function(p){ ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 6.283); ctx.fill(); });
 
-  if (calibSink) calibSink(a, tilt);
+  var tlen = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+  if (calibSink) calibSink(a, tilt, pts[0].y, tlen);
   if (phase !== "counting") { angleEl.textContent = "からだの角度 " + Math.round(a) + "°"; return; }
 
-  var r = counter.update({angle: a, torsoTilt: tilt, hipX: lm[side[1]].x, hipY: lm[side[1]].y});
-  angleEl.textContent = "からだの角度 " + Math.round(r.angle) + "°";
+  var r;
+  if (mode === "height") {
+    r = hcounter.update({shoulderY: pts[0].y, hipY: pts[1].y, len: tlen});
+    if (r.baseY !== null && r.len) {
+      // 「ここまで肩が上がると1回」の線
+      var ty = r.baseY - r.up * r.len;
+      ctx.save();
+      ctx.strokeStyle = "#4cd08a"; ctx.lineWidth = 4; ctx.setLineDash([16, 10]);
+      ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke();
+      ctx.restore();
+    }
+    angleEl.textContent = "高さ " + Math.max(0, Math.round(r.rise * 100)) + "％（" + Math.round(r.up * 100) + "％で1回）";
+  } else {
+    r = counter.update({angle: a, torsoTilt: tilt, hipX: lm[side[1]].x, hipY: lm[side[1]].y});
+    angleEl.textContent = "からだの角度 " + Math.round(r.angle) + "°";
+  }
+  if (r.retracted) {
+    setCount(session - 1);
+    addToday(-1);
+    msg("立ち上がったので、直前の1回を取り消しました（" + session + " 回）", "bad");
+    holdUntil = performance.now() + 2500;
+    return;
+  }
   if (r.counted) {
     setCount(session + 1);
     addToday(1);
@@ -698,8 +854,13 @@ calibBtn.addEventListener("click", calibrate);
 pauseBtn.addEventListener("click", function(){ phase === "paused" ? resume() : pause(); });
 $("plus").addEventListener("click", function(){ setCount(session + 1); addToday(1); });
 $("minus").addEventListener("click", function(){ if (session > 0) { setCount(session - 1); addToday(-1); } });
-$("reset").addEventListener("click", function(){ setCount(0); counter.reset(); counter.setLevel($("sens").value); msg("今回を0に戻しました（今日の合計はそのままです）"); });
-$("sens").addEventListener("change", function(){ counter.setLevel($("sens").value); lsSet("situp-sens", $("sens").value); });
+$("reset").addEventListener("click", function(){ setCount(0); resetCounters(); msg("今回を0に戻しました（今日の合計はそのままです）"); });
+$("mode").addEventListener("change", function(){ lsSet("situp-mode", $("mode").value); resetCounters(); });
+$("zoom").addEventListener("change", async function(){
+  lsSet("situp-zoom", $("zoom").value);
+  if (running && stream) { try { await applyZoom(stream.getVideoTracks()[0]); } catch(e){} }
+});
+$("sens").addEventListener("change", function(){ setLevelAll($("sens").value); lsSet("situp-sens", $("sens").value); });
 $("voice").addEventListener("change", function(){ lsSet("situp-voice", $("voice").value); });
 $("vctl").addEventListener("change", function(){
   lsSet("situp-vctl", $("vctl").value);
@@ -717,10 +878,14 @@ document.addEventListener("visibilitychange", async function(){
 /* ---- 前回の設定 ---- */
 var hasCalib = loadCalibration();
 var s = lsGet("situp-sens"); if (s && (s !== "custom" || hasCalib) && $("sens").querySelector('option[value="' + s + '"]')) $("sens").value = s;
+var md = lsGet("situp-mode");
+if (md === "height" || md === "angle") $("mode").value = md;
+else { $("sens").value = "small"; lsSet("situp-sens", "small"); lsSet("situp-mode", "height"); }   // 新しい数え方に切りかえた最初だけ「小さい（クランチ）」にする
+var zm = lsGet("situp-zoom"); if (zm === "wide" || zm === "normal") $("zoom").value = zm;
 var v = lsGet("situp-voice"); if (v) $("voice").value = v;
 var vc = lsGet("situp-vctl"); if (vc) $("vctl").value = vc;
 var c = lsGet("situp-cam"); if (c) $("cam").value = c;
-counter.setLevel($("sens").value);
+setLevelAll($("sens").value);
 renderLog();
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).catch(function(){}); }
 </script>
