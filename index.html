@@ -50,6 +50,8 @@ button.main.stop{background:var(--warn);border-color:var(--warn);color:#fff}
 label{display:flex;align-items:center;justify-content:space-between;gap:10px}
 select{min-height:44px}
 #angle{font-variant-numeric:tabular-nums;color:var(--sub);text-align:center;font-size:.9rem}
+#voiceState{text-align:center;font-size:.85rem;color:var(--ok);margin-top:2px}
+#voiceState.off{color:var(--sub)}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 td{padding:6px 0;border-top:1px solid var(--line)}
 td:last-child{text-align:right;font-weight:700}
@@ -96,6 +98,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 <div id="today">今日の合計 <b id="todayN">0</b> 回</div>
 <div id="msg">準備ができたらスタートを押してください</div>
 <div id="angle"></div>
+<div id="voiceState" hidden></div>
 
 <div class="row">
   <button id="startBtn" class="main">スタート</button>
@@ -127,6 +130,10 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   <label>カメラ
     <select id="cam"><option value="user">前（自分側）</option><option value="environment">うしろ</option></select>
   </label>
+  <div style="height:8px"></div>
+  <label>声で操作する
+    <select id="vctl"><option value="on">する</option><option value="off">しない</option></select>
+  </label>
   <div style="height:10px"></div>
   <button id="calibBtn">自分に合わせる</button>
   <div id="calibStatus"></div>
@@ -141,9 +148,9 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   <h2>つかいかた</h2>
   <ol>
     <li>スマホを横向きにして床かいすに立てかけ、寝た姿が肩からひざまで映るようにします。</li>
-    <li>スタートを押し、カメラの使用を許可します。</li>
-    <li>5から1まで数える間に、仰向けになってください。「はじめ」で数え始めます。</li>
-    <li>腹筋をします。起き上がると回数が増えます。休むときは「一時停止」、続けるときは「再開」を押します（3つ数えてから続きを数えます）。</li>
+    <li>スタートを押し、カメラとマイクの使用を許可します。仰向けになって準備ができたら「スタート」と言います（声の操作が「しない」のときは、すぐに5から数え始めます）。</li>
+    <li>5から1まで数える間に仰向けになります。「はじめ」で数え始めます。</li>
+    <li>腹筋をします。起き上がると回数が増えます。休むときは「ストップ」と言うか「一時停止」を押し、続けるときは「スタート」と言うか「再開」を押します（3つ数えてから続きを数えます）。終わるときは「おわり」と言います。</li>
     <li>数えにくいときは「動きの大きさ」を変えるか、「自分に合わせる」を押して、声の案内にしたがってください。</li>
     <li>「今回」はこの1回分、「今日の合計」は今日ぜんぶの回数です。</li>
   </ol>
@@ -224,6 +231,14 @@ function makeSideLocker(){
     }
   };
 }
+/* 声の言葉を命令に変える。end（終わり）/ pause（一時停止）/ start（開始・再開）/ null */
+function matchCommand(text){
+  var t = String(text || "").replace(/[\s　、。]/g, "");
+  if (/おわり|終わり|終り|終了|しゅうりょう/.test(t)) return "end";
+  if (/ストップ|すとっぷ|止めて|とめて|止まれ|一時停止|いちじていし|休憩|きゅうけい|待って|まって/.test(t)) return "pause";
+  if (/スタート|すたーと|再開|さいかい|開始|かいし|はじめ|始め/.test(t)) return "start";
+  return null;
+}
 function median(arr){
   var a = arr.slice().sort(function(x, y){ return x - y; }), n = a.length;
   return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
@@ -266,7 +281,7 @@ var counter = makeCounter("normal");
 var locker = makeSideLocker();
 var session = 0;
 var lostFrames = 0;
-var phase = "idle";        // idle / countdown / counting / paused / calib
+var phase = "idle";        // idle / waiting / countdown / counting / paused / calib
 var runId = 0;             // スタート・ストップのたびに増やし、古い処理を止める
 var busy = false;          // じゅんび中・合わせ中
 var calibSink = null;      // 合わせ中にフレームごとの値を受け取る関数
@@ -319,8 +334,10 @@ function renderLog(){
 }
 
 /* ---- 声 ---- */
+var muteUntil = 0;   // アプリ自身の声を命令と聞き違えないため
 function speakText(t){
   if ($("voice").value !== "on" || !("speechSynthesis" in window)) return;
+  muteUntil = performance.now() + 900 + String(t).length * 220;
   try {
     speechSynthesis.cancel();
     var u = new SpeechSynthesisUtterance(String(t));
@@ -383,6 +400,15 @@ async function boot(){
 async function start(){
   if (busy) return;
   if (!(await boot())) return;
+  if (voiceWanted() && startListening()) {
+    phase = "waiting";
+    msg("準備ができたら「スタート」と言ってください", "good");
+    speakText("準備ができたら、スタートと言ってください");
+    return;
+  }
+  beginCountdown();
+}
+async function beginCountdown(){
   var id = runId;
   phase = "countdown";
   counter.reset(); counter.setLevel($("sens").value);
@@ -397,6 +423,60 @@ async function start(){
   setPauseBtn(false); pauseBtn.hidden = false;
 }
 
+/* ---- 声で操作（スタート／ストップ／おわり） ---- */
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+var rec = null, listening = false, lastCmdAt = 0;
+var voiceEl = $("voiceState");
+function voiceWanted(){ return !!SR && $("vctl").value === "on"; }
+function showVoice(text, off){ voiceEl.hidden = !text; voiceEl.textContent = text || ""; voiceEl.classList.toggle("off", !!off); }
+function startListening(){
+  if (!SR) { showVoice("このスマホでは声の操作が使えません", true); return false; }
+  if (listening) return true;
+  listening = true;
+  if (!rec) {
+    rec = new SR();
+    rec.lang = "ja-JP"; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = function(ev){
+      for (var i = ev.resultIndex; i < ev.results.length; i++) {
+        var cmd = matchCommand(ev.results[i][0].transcript);
+        if (cmd) { onVoice(cmd); break; }
+      }
+    };
+    rec.onerror = function(ev){
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        listening = false;
+        showVoice("マイクが許可されていません。ボタンで操作してください", true);
+      }
+    };
+    rec.onend = function(){
+      // スマホは少し黙ると聞くのをやめるので、聞き直す
+      if (listening) setTimeout(function(){ if (listening) { try { rec.start(); } catch(e){} } }, 250);
+    };
+  }
+  try { rec.start(); } catch(e){}
+  showVoice("声の操作：「スタート」「ストップ」「おわり」");
+  return true;
+}
+function stopListening(){
+  listening = false;
+  try { if (rec) rec.abort(); } catch(e){}
+  showVoice("");
+}
+function onVoice(cmd){
+  var now = performance.now();
+  if (now < muteUntil) return;
+  if (now - lastCmdAt < 1500) return;   // 同じ言葉を何度も拾わない
+  if (cmd === "end") {
+    if (!running) return;
+    lastCmdAt = now; stop(); leaveLandscape();
+  } else if (cmd === "pause") {
+    if (phase === "counting") { lastCmdAt = now; pause(); }
+  } else if (cmd === "start") {
+    if (phase === "waiting") { lastCmdAt = now; beginCountdown(); }
+    else if (phase === "paused") { lastCmdAt = now; resume(); }
+  }
+}
+
 /* ---- 一時停止・再開 ---- */
 function setPauseBtn(paused){
   pauseBtn.textContent = paused ? "再開" : "一時停止";
@@ -406,7 +486,7 @@ function pause(){
   if (phase !== "counting") return;
   phase = "paused";
   setPauseBtn(true);
-  msg("一時停止中です。「再開」で続きから数えます", "good");
+  msg(listening ? "一時停止中です。「スタート」と言うと続きから数えます" : "一時停止中です。「再開」で続きから数えます", "good");
   speakText("一時停止");
 }
 async function resume(){
@@ -427,6 +507,7 @@ async function resume(){
 
 function stop(text, kind){
   runId++; running = false; phase = "idle"; calibSink = null;
+  stopListening();
   if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
   stream = null;
   try { if (wakeLock) wakeLock.release(); } catch(e){}
@@ -607,6 +688,11 @@ $("minus").addEventListener("click", function(){ if (session > 0) { setCount(ses
 $("reset").addEventListener("click", function(){ setCount(0); counter.reset(); counter.setLevel($("sens").value); msg("今回を0に戻しました（今日の合計はそのままです）"); });
 $("sens").addEventListener("change", function(){ counter.setLevel($("sens").value); lsSet("situp-sens", $("sens").value); });
 $("voice").addEventListener("change", function(){ lsSet("situp-voice", $("voice").value); });
+$("vctl").addEventListener("change", function(){
+  lsSet("situp-vctl", $("vctl").value);
+  if ($("vctl").value === "off") stopListening();
+  else if (running) startListening();
+});
 $("cam").addEventListener("change", async function(){
   lsSet("situp-cam", $("cam").value);
   if (running) { try { await openCamera(); } catch(e){ msg("カメラを切り替えられませんでした", "bad"); } }
@@ -619,6 +705,7 @@ document.addEventListener("visibilitychange", async function(){
 var hasCalib = loadCalibration();
 var s = lsGet("situp-sens"); if (s && (s !== "custom" || hasCalib) && $("sens").querySelector('option[value="' + s + '"]')) $("sens").value = s;
 var v = lsGet("situp-voice"); if (v) $("voice").value = v;
+var vc = lsGet("situp-vctl"); if (vc) $("vctl").value = vc;
 var c = lsGet("situp-cam"); if (c) $("cam").value = c;
 counter.setLevel($("sens").value);
 renderLog();
