@@ -43,6 +43,8 @@ button.main{flex:1;background:var(--accent);color:#1a1300;font-weight:800;font-s
 button.main.stop{background:var(--warn);border-color:var(--warn);color:#fff}
 .row button.sub{flex:1}
 .row button.wide{flex:2;white-space:nowrap}
+.row button.pause{flex:1;font-weight:800;font-size:1.1rem;background:var(--panel);border:2px solid var(--accent);color:var(--accent);white-space:nowrap}
+.row button.pause.resume{background:var(--ok);border-color:var(--ok);color:#06210f}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
 .panel h2{font-size:.9rem;margin:0 0 8px;color:var(--sub);font-weight:600}
 label{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -97,6 +99,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 
 <div class="row">
   <button id="startBtn" class="main">スタート</button>
+  <button id="pauseBtn" class="pause" hidden>一時停止</button>
 </div>
 <div class="row">
   <button id="minus" class="sub" aria-label="1回へらす">−1</button>
@@ -140,7 +143,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
     <li>スマホを横向きにして床かいすに立てかけ、寝た姿が肩からひざまで映るようにします。</li>
     <li>スタートを押し、カメラの使用を許可します。</li>
     <li>5から1まで数える間に、仰向けになってください。「はじめ」で数え始めます。</li>
-    <li>腹筋をします。起き上がると回数が増えます。</li>
+    <li>腹筋をします。起き上がると回数が増えます。休むときは「一時停止」、続けるときは「再開」を押します（3つ数えてから続きを数えます）。</li>
     <li>数えにくいときは「動きの大きさ」を変えるか、「自分に合わせる」を押して、声の案内にしたがってください。</li>
     <li>「今回」はこの1回分、「今日の合計」は今日ぜんぶの回数です。</li>
   </ol>
@@ -256,14 +259,14 @@ var CALIB_SETTLE_MS = 4000, CALIB_LYING_MS = 2000, CALIB_UP_MS = 4000;
 var $ = function(id){ return document.getElementById(id); };
 var video = $("video"), canvas = $("overlay"), ctx = canvas.getContext("2d");
 var stage = $("stage"), msgEl = $("msg"), countEl = $("count"), angleEl = $("angle");
-var startBtn = $("startBtn"), calibBtn = $("calibBtn");
+var startBtn = $("startBtn"), calibBtn = $("calibBtn"), pauseBtn = $("pauseBtn");
 
 var landmarker = null, stream = null, running = false, lastTime = -1, wakeLock = null;
 var counter = makeCounter("normal");
 var locker = makeSideLocker();
 var session = 0;
 var lostFrames = 0;
-var phase = "idle";        // idle / countdown / counting / calib
+var phase = "idle";        // idle / countdown / counting / paused / calib
 var runId = 0;             // スタート・ストップのたびに増やし、古い処理を止める
 var busy = false;          // じゅんび中・合わせ中
 var calibSink = null;      // 合わせ中にフレームごとの値を受け取る関数
@@ -391,6 +394,35 @@ async function start(){
   holdUntil = performance.now() + 1200;
   counter.reset(); counter.setLevel($("sens").value);
   phase = "counting";
+  setPauseBtn(false); pauseBtn.hidden = false;
+}
+
+/* ---- 一時停止・再開 ---- */
+function setPauseBtn(paused){
+  pauseBtn.textContent = paused ? "再開" : "一時停止";
+  pauseBtn.classList.toggle("resume", paused);
+}
+function pause(){
+  if (phase !== "counting") return;
+  phase = "paused";
+  setPauseBtn(true);
+  msg("一時停止中です。「再開」で続きから数えます", "good");
+  speakText("一時停止");
+}
+async function resume(){
+  if (phase !== "paused" || busy) return;
+  var id = runId;
+  phase = "countdown"; pauseBtn.disabled = true;
+  for (var n = 3; n >= 1; n--) {
+    msg(String(n), "big"); speakText(n);
+    if (!(await wait(1000, id))) { pauseBtn.disabled = false; return; }
+  }
+  pauseBtn.disabled = false;
+  msg("さいかい", "good big"); speakText("再開");
+  holdUntil = performance.now() + 1200;
+  counter.reset(); counter.setLevel($("sens").value);
+  phase = "counting";
+  setPauseBtn(false);
 }
 
 function stop(text, kind){
@@ -401,6 +433,7 @@ function stop(text, kind){
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   $("placeholder").hidden = false;
   startBtn.textContent = "スタート"; startBtn.classList.remove("stop");
+  pauseBtn.hidden = true; pauseBtn.disabled = false; setPauseBtn(false);
   msg(text || (session + " 回でした。おつかれさまでした！"), kind || "good");
   angleEl.textContent = "";
 }
@@ -551,6 +584,7 @@ function handle(res){
 /* ---- ボタン ---- */
 startBtn.addEventListener("click", function(){ running ? stop() : start(); });
 calibBtn.addEventListener("click", calibrate);
+pauseBtn.addEventListener("click", function(){ phase === "paused" ? resume() : pause(); });
 $("plus").addEventListener("click", function(){ setCount(session + 1); addToday(1); });
 $("minus").addEventListener("click", function(){ if (session > 0) { setCount(session - 1); addToday(-1); } });
 $("reset").addEventListener("click", function(){ setCount(0); counter.reset(); counter.setLevel($("sens").value); msg("今回を0に戻しました（今日の合計はそのままです）"); });
