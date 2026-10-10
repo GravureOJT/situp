@@ -173,9 +173,9 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 <div class="panel">
   <h2>つかいかた</h2>
   <ol>
-    <li>スマホを床かいすに立てかけ、寝た姿の肩と腰が映るようにします。</li>
+    <li>スマホを床かいすに立てかけ、寝た姿の頭・肩・腰が映るようにします。</li>
     <li>「準備へ」を押します。横向き・全画面になり、カメラが始まります（はじめてのときは、カメラとマイクを「許可」します）。</li>
-    <li>画面に<b>緑の線（上の線）</b>と<b>青い線（下の線）</b>が出ます。肩が上の線より上に来ると1回、下の線より下に戻ると次を数えられます。線は「上の線▲▼」「下の線▲▼」のボタンか、画面の線を指で上下に動かして合わせます。</li>
+    <li>画面に<b>緑の線（上の線）</b>と<b>青い線（下の線）</b>が出ます。<b>頭の中心（オレンジの点）</b>が上の線より上に来ると1回、下の線より下に戻ると次を数えられます。線は「上の線▲▼」「下の線▲▼」のボタンか、画面の線を指で上下に動かして合わせます。</li>
     <li>線を自分で合わせるのが大変なときは、「自分に合わせる」を押して声の案内にしたがうと、線が自動で決まります。</li>
     <li>位置が合ったら「スタート」を押すか、「スタート」と言います。5から1まで数えたあと「はじめ」で数え始めます。</li>
     <li>休むときは「ストップ」と言うか「一時停止」を押し、続けるときは「スタート」と言うか「再開」を押します。途中で「何回？」と聞くと、今の回数を声で教えます。終わるときは「おわり」と言うか「おわり」を押します。</li>
@@ -303,7 +303,7 @@ function makeHeightCounter(level){
   };
 }
 
-/* ---- 線で数える：画面の「上の線」より肩が上がったら1回、「下の線」より下に戻ったら次を数えられる ----
+/* ---- 線で数える：画面の「上の線」より頭の中心が上がったら1回、「下の線」より下に戻ったら次を数えられる ----
    update({y, hipY, len, top, bottom}) -> {counted, retracted, state, rejected}
    y/top/bottom は画面の上下位置（0=いちばん上、1=いちばん下）、hipY・len はピクセル */
 function makeLineCounter(){
@@ -334,6 +334,20 @@ function makeLineCounter(){
       return {counted: counted, retracted: retracted, state: armed ? 'down' : 'up', rejected: rejected};
     }
   };
+}
+/* 頭の中心を求める。lm は MediaPipe の点の配列（0〜1）。鼻(0)・左右の目(2,5)・左右の耳(7,8)のうち
+   見えているものを、見えやすさで重みをつけて平均する。見えなければ null */
+var HEAD_IDS = [0, 2, 5, 7, 8];
+function headCenter(lm){
+  var sx = 0, sy = 0, sw = 0;
+  HEAD_IDS.forEach(function(i){
+    var p = lm[i]; if (!p) return;
+    var v = p.visibility === undefined ? 1 : p.visibility;
+    if (v < 0.3) return;
+    sx += p.x * v; sy += p.y * v; sw += v;
+  });
+  if (sw < 0.5) return null;
+  return {x: sx / sw, y: sy / sw};
 }
 /* 線の位置を正しい範囲にそろえる */
 function clampLines(top, bottom){
@@ -412,7 +426,7 @@ function computeHeightCalibration(lyY, lyLen, upY){
   if (!(reset >= 0.02)) return fail;
   return {ok: true, maxRise: maxRise, up: up, reset: reset};
 }
-/* 寝ているときの肩の位置(lyF)と起きたときの肩の位置(upF)（どちらも0〜1）から、上の線・下の線を決める */
+/* 寝ているときの頭の中心の位置(lyF)と起きたときの頭の中心の位置(upF)（どちらも0〜1）から、上の線・下の線を決める */
 function computeLineCalibration(lyF, upF){
   var fail = {ok: false};
   if (!lyF || !upF || lyF.length < 5 || upF.length < 5) return fail;
@@ -923,25 +937,35 @@ function handle(res){
   var a = jointAngle(pts[0], pts[1], pts[2]);
   if (a === null) return;
   var tilt = torsoTilt(pts[0], pts[1]);
+  // 線で数えるときの基準点：頭の中心（見えないときは肩）
+  var hc = headCenter(lm);
+  var ref = (mode === "line" && hc) ? {x: hc.x * W, y: hc.y * H} : pts[0];
 
   // 判定に使う3点を目立たせる
   ctx.strokeStyle = "#ffb020"; ctx.lineWidth = 5; ctx.lineCap = "round";
   ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); if (mode === "angle") ctx.lineTo(pts[2].x, pts[2].y); ctx.stroke();
   ctx.fillStyle = "#ffb020";
   pts.slice(0, need).forEach(function(p){ ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 6.283); ctx.fill(); });
+  if (ref !== pts[0]) {
+    // 頭の中心：肩から線でつないで、大きめの点で示す
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(ref.x, ref.y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(ref.x, ref.y, 13, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(ref.x, ref.y, 13, 0, 6.283); ctx.stroke();
+  }
 
   var tlen = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-  if (calibSink) calibSink(a, tilt, pts[0].y, tlen, pts[0].y / H);
+  if (calibSink) calibSink(a, tilt, pts[0].y, tlen, ref.y / H);
   if (phase !== "counting") {
-    if (mode === "line") angleEl.textContent = lineInfo(pts[0].y / H);
+    if (mode === "line") angleEl.textContent = lineInfo(ref.y / H, ref !== pts[0]);
     else angleEl.textContent = "からだの角度 " + Math.round(a) + "°";
     return;
   }
 
   var r;
   if (mode === "line") {
-    r = lcounter.update({y: pts[0].y / H, hipY: pts[1].y, len: tlen, top: lines.top, bottom: lines.bottom});
-    angleEl.textContent = lineInfo(pts[0].y / H);
+    r = lcounter.update({y: ref.y / H, hipY: pts[1].y, len: tlen, top: lines.top, bottom: lines.bottom});
+    angleEl.textContent = lineInfo(ref.y / H, ref !== pts[0]);
   } else if (mode === "height") {
     r = hcounter.update({shoulderY: pts[0].y, hipY: pts[1].y, len: tlen});
     if (r.baseY !== null && r.len) {
@@ -1013,9 +1037,9 @@ function drawLines(){
   one(lines.top, "#4cd08a", "上の線");
   one(lines.bottom, "#4aa8ff", "下の線");
 }
-function lineInfo(f){
+function lineInfo(f, isHead){
   var where = f <= lines.top ? "上の線より上" : f >= lines.bottom ? "下の線より下" : "線のあいだ";
-  return "肩の位置：" + where;
+  return (isHead ? "頭の位置：" : "肩の位置（頭が見えません）：") + where;
 }
 var LINE_STEP = 0.03;
 $("topUp").addEventListener("click", function(){ setLines(lines.top - LINE_STEP, lines.bottom); });
