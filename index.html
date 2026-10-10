@@ -1162,6 +1162,9 @@ function updateModeUI(){
   stage.classList.toggle("drag", line);
 }
 function leaveLandscape(){
+  // アプリとして入れて開いたときは、マニフェストで横向きと決めているので、固定を外さない
+  var standalone = window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches);
+  if (standalone) return;
   try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch(e){}
   try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function(){}); } catch(e){}
 }
