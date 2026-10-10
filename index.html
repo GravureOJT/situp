@@ -173,10 +173,10 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 <div class="panel">
   <h2>つかいかた</h2>
   <ol>
-    <li>スマホを床かいすに立てかけ、寝た姿の頭・肩・腰が映るようにします。</li>
+    <li>スマホを床かいすに立てかけ、寝た姿の頭と腰が映るようにします（線で数えるときは肩は使いません）。</li>
     <li>「準備へ」を押します。横向き・全画面になり、カメラが始まります（はじめてのときは、カメラとマイクを「許可」します）。</li>
     <li>画面に<b>緑の線（上の線）</b>と<b>青い線（下の線）</b>が出ます。<b>頭の中心（オレンジの点）</b>が上の線より上に来ると1回、下の線より下に戻ると次を数えられます。線は「上の線▲▼」「下の線▲▼」のボタンか、画面の線を指で上下に動かして合わせます。</li>
-    <li>線を自分で合わせるのが大変なときは、「自分に合わせる」を押して声の案内にしたがうと、線が自動で決まります。</li>
+    <li>線を自分で合わせるのが大変なときは、「自分に合わせる」を押すか、準備の画面で「合わせて」と言い、声の案内にしたがうと、線が自動で決まります。</li>
     <li>位置が合ったら「スタート」を押すか、「スタート」と言います。5から1まで数えたあと「はじめ」で数え始めます。</li>
     <li>休むときは「ストップ」と言うか「一時停止」を押し、続けるときは「スタート」と言うか「再開」を押します。途中で「何回？」と聞くと、今の回数を声で教えます。終わるときは「おわり」と言うか「おわり」を押します。</li>
     <li>もっと広く映したいときは、「カメラ」で別のレンズを選んでみてください（スマホによっては、うしろの広角レンズが選べます）。</li>
@@ -306,12 +306,16 @@ function makeHeightCounter(level){
 /* ---- 線で数える：画面の「上の線」より頭の中心が上がったら1回、「下の線」より下に戻ったら次を数えられる ----
    update({y, hipY, len, top, bottom}) -> {counted, retracted, state, rejected}
    y/top/bottom は画面の上下位置（0=いちばん上、1=いちばん下）、hipY・len はピクセル */
+var L_HOLD_MS = 120;   // 上の線を何ミリ秒超えたら1回か（コマ数ではなく時間で見る。処理が遅いスマホでも数えやすい）
+var L_HOLD_MIN = 2;    // ただし最低これだけのコマ数は続けて超えること（1コマだけの読み違いを防ぐ）
 function makeLineCounter(){
-  var sy = null, hy = null, hanchor = null, armed = true, above = 0, since = null;
+  var sy = null, hy = null, hanchor = null, armed = true, above = 0, aboveT = null, since = null;
   return {
-    reset: function(){ sy = null; hy = null; hanchor = null; armed = true; above = 0; since = null; },
+    reset: function(){ sy = null; hy = null; hanchor = null; armed = true; above = 0; aboveT = null; since = null; },
     update: function(o){
-      sy = sy === null ? o.y : sy * 0.5 + o.y * 0.5;
+      // 処理が遅いとき（コマの間隔が長いとき）は、ならしを弱めて今の位置をすぐ使う
+      var k = o.dt && o.dt > 90 ? 0.8 : 0.5;
+      sy = sy === null ? o.y : sy * (1 - k) + o.y * k;
       hy = hy === null ? o.hipY : hy * 0.5 + o.hipY * 0.5;
       if (hanchor === null || hy > hanchor) hanchor = hy;            // 腰のいちばん低い位置
       else hanchor += (hy - hanchor) * H_DECAY;
@@ -322,9 +326,13 @@ function makeLineCounter(){
         if (tooHigh) { retracted = true; since = null; }
         else if (since > H_UNDO_FRAMES) since = null;
       }
+      var now = o.t || 0;
       if (armed) {
         if (sy <= o.top && !tooHigh) {
-          if (++above >= H_HOLD_FRAMES) { armed = false; above = 0; counted = true; since = 0; }
+          if (above === 0) aboveT = now;
+          above++;
+          var held = o.t ? (now - aboveT >= L_HOLD_MS && above >= L_HOLD_MIN) : false;
+          if (held || above >= H_HOLD_FRAMES) { armed = false; above = 0; counted = true; since = 0; }
         } else if (sy <= o.top) { armed = false; above = 0; rejected = true; }
         else above = 0;
       } else {
@@ -377,12 +385,14 @@ function makeSideLocker(){
     }
   };
 }
-/* 声の言葉を命令に変える。end（終わり）/ count（何回？）/ pause（一時停止）/ start（開始・再開）/ null */
+/* 声の言葉を命令に変える。end（終わり）/ count（何回？）/ pause（一時停止）/ calib（自分に合わせる）/ start（開始・再開）/ null */
 function matchCommand(text){
   var t = String(text || "").replace(/[\s　、。]/g, "");
   if (/おわり|終わり|終り|終了|しゅうりょう/.test(t)) return "end";
   if (/何回|なんかい|回数|かいすう|いくつ/.test(t)) return "count";
   if (/ストップ|すとっぷ|止めて|とめて|止まれ|一時停止|いちじていし|休憩|きゅうけい|待って|まって/.test(t)) return "pause";
+  // アプリが言う「合わせました」は命令にしない
+  if (/合わせ|あわせ|合せ|調整|ちょうせい/.test(t.replace(/合わせました|あわせました/g, ""))) return "calib";
   if (/スタート|すたーと|再開|さいかい|開始|かいし|はじめ|始め/.test(t)) return "start";
   return null;
 }
@@ -528,6 +538,7 @@ function renderLog(){
 }
 
 /* ---- 声 ---- */
+var calibDoneAt = -1e9;   // 合わせ終わった時刻（終わった直後に聞き違えて、もう一度始めないため）
 var muteUntil = 0;   // アプリ自身の声を命令と聞き違えないため
 function speakText(t){
   if ($("voice").value !== "on" || !("speechSynthesis" in window)) return;
@@ -562,8 +573,8 @@ var camPref = lsGet("situp-cam") || "user";   // "user" / "environment" / "dev:<
 function camConstraints(){
   var wide = $("zoom").value === "wide";
   // カメラの部品は4:3なので、4:3で受け取ると上下が切れず、いちばん広く映る
-  var v = wide ? {width: {ideal: 1280}, height: {ideal: 960}, aspectRatio: {ideal: 4 / 3}}
-               : {width: {ideal: 960}, height: {ideal: 540}};
+  var v = wide ? {width: {ideal: 640}, height: {ideal: 480}, aspectRatio: {ideal: 4 / 3}}
+               : {width: {ideal: 640}, height: {ideal: 360}};
   if (camPref.indexOf("dev:") === 0) v.deviceId = {exact: camPref.slice(4)};
   else v.facingMode = camPref;
   return {video: v, audio: false};
@@ -671,8 +682,8 @@ async function prepare(){
   quitBtn.hidden = false;
   var how = $("mode").value === "line" ? "線の位置を合わせて、" : "";
   if (voiceWanted() && startListening()) {
-    msg(how + "「スタート」を押すか、「スタート」と言ってください", "good");
-    speakText("準備ができたら、スタートと言ってください");
+    msg("線を合わせるときは「合わせて」、始めるときは「スタート」と言ってください", "good");
+    speakText("線を合わせるときは、あわせて。始めるときは、スタートと言ってください");
   } else {
     msg(how + "準備ができたら「スタート」を押してください", "good");
   }
@@ -726,7 +737,7 @@ function startListening(){
     };
   }
   try { rec.start(); } catch(e){}
-  showVoice("声の操作：「スタート」「ストップ」「何回？」「おわり」");
+  showVoice("声の操作：「合わせて」「スタート」「ストップ」「何回？」「おわり」");
   return true;
 }
 function stopListening(){
@@ -746,6 +757,9 @@ function onVoice(cmd){
     lastCmdAt = now; stop(); leaveLandscape();
   } else if (cmd === "pause") {
     if (phase === "counting") { lastCmdAt = now; pause(); }
+  } else if (cmd === "calib") {
+    // 「合わせて」：数える前（準備中）か一時停止中に、自分に合わせるを始める
+    if (running && (phase === "waiting" || phase === "paused") && now > calibDoneAt + 4000) { lastCmdAt = now; calibrate(); }
   } else if (cmd === "start") {
     if (phase === "waiting") { lastCmdAt = now; beginCountdown(); }
     else if (phase === "paused") { lastCmdAt = now; resume(); }
@@ -836,7 +850,7 @@ async function calibrate(){
   busy = true; calibBtn.disabled = true;
   phase = "calib"; locker.reset();
   var finish = function(text, kind){
-    busy = false; calibBtn.disabled = false;
+    busy = false; calibBtn.disabled = false; calibDoneAt = performance.now();
     if (startedHere) stop(text, kind);
     else {
       phase = prev;
@@ -896,18 +910,24 @@ function loop(){
     if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
       canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     }
-    var res = landmarker.detectForVideo(video, performance.now());
+    var now = performance.now();
+    frameDt = lastFrameAt ? now - lastFrameAt : 0;
+    lastFrameAt = now;
+    if (frameDt > 0 && frameDt < 2000) fpsAvg = fpsAvg ? fpsAvg * 0.9 + (1000 / frameDt) * 0.1 : 1000 / frameDt;
+    var res = landmarker.detectForVideo(video, now);
     handle(res);
   }
   requestAnimationFrame(loop);
 }
 
 var LEFT = [11, 23, 25], RIGHT = [12, 24, 26];
+var frameDt = 0, lastFrameAt = 0, fpsAvg = 0;
+var lastHead = null, lastHeadAt = 0;   // 頭が一瞬見えなくなったときに、直前の位置を少しのあいだ使う
 
 function handle(res){
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   var mode = $("mode").value;
-  var needMsg = mode !== "angle" ? "肩と腰が映るようにしてください" : "肩・腰・ひざが映るようにしてください";
+  var needMsg = mode === "line" ? "頭と腰が映るようにしてください" : mode !== "angle" ? "肩と腰が映るようにしてください" : "肩・腰・ひざが映るようにしてください";
   if (mode === "line") drawLines();
   var lm = res.landmarks && res.landmarks[0];
   if (!lm) {
@@ -917,8 +937,10 @@ function handle(res){
   lostFrames = 0;
   var W = canvas.width, H = canvas.height;
   var need = mode !== "angle" ? 2 : 3;   // 高さ・線で数えるときは、ひざは映らなくてもよい
+  // 線で数えるときは、肩は使わない（頭と腰の2点）。左右の向きは腰の見えやすさで決める
   var stats = function(a){
-    var v = a.slice(0, need).map(function(i){ return lm[i].visibility; });
+    var ids = mode === "line" ? [a[1]] : a.slice(0, need);
+    var v = ids.map(function(i){ return lm[i].visibility; });
     var sum = 0; v.forEach(function(x){ sum += x; });
     return {min: Math.min.apply(null, v), avg: sum / v.length};
   };
@@ -938,34 +960,42 @@ function handle(res){
   if (a === null) return;
   var tilt = torsoTilt(pts[0], pts[1]);
   // 線で数えるときの基準点：頭の中心（見えないときは肩）
-  var hc = headCenter(lm);
+  var hc = headCenter(lm), tnow = performance.now();
+  if (hc) { lastHead = hc; lastHeadAt = tnow; }
+  else if (lastHead && tnow - lastHeadAt < 600) hc = lastHead;
   var ref = (mode === "line" && hc) ? {x: hc.x * W, y: hc.y * H} : pts[0];
+  var headAxis = ref !== pts[0];   // 頭と腰の2点で見ている
+  // 頭が見えず肩で代わりに見るときは、肩も見えている必要がある
+  if (mode === "line" && !headAxis && lm[side[0]].visibility < 0.4) { hint(needMsg, "bad"); return; }
 
-  // 判定に使う3点を目立たせる
-  ctx.strokeStyle = "#ffb020"; ctx.lineWidth = 5; ctx.lineCap = "round";
-  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); if (mode === "angle") ctx.lineTo(pts[2].x, pts[2].y); ctx.stroke();
-  ctx.fillStyle = "#ffb020";
-  pts.slice(0, need).forEach(function(p){ ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 6.283); ctx.fill(); });
-  if (ref !== pts[0]) {
-    // 頭の中心：肩から線でつないで、大きめの点で示す
-    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(ref.x, ref.y); ctx.stroke();
+  // 判定に使う点を目立たせる
+  ctx.strokeStyle = "#ffb020"; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.fillStyle = "#ffb020";
+  if (headAxis) {
+    // 頭と腰の2点：腰→頭を1本の線で結ぶ（肩は使わない）
+    ctx.beginPath(); ctx.moveTo(pts[1].x, pts[1].y); ctx.lineTo(ref.x, ref.y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(pts[1].x, pts[1].y, 8, 0, 6.283); ctx.fill();
     ctx.beginPath(); ctx.arc(ref.x, ref.y, 13, 0, 6.283); ctx.fill();
     ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(ref.x, ref.y, 13, 0, 6.283); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); if (mode === "angle") ctx.lineTo(pts[2].x, pts[2].y); ctx.stroke();
+    pts.slice(0, need).forEach(function(p){ ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 6.283); ctx.fill(); });
   }
 
   var tlen = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+  // 立ち上がりを見分けるための胴の長さ。頭と腰で見るときは、頭〜腰の長さを肩〜腰相当に直して使う
+  var llen = headAxis ? Math.hypot(pts[1].x - ref.x, pts[1].y - ref.y) / 1.4 : tlen;
   if (calibSink) calibSink(a, tilt, pts[0].y, tlen, ref.y / H);
   if (phase !== "counting") {
-    if (mode === "line") angleEl.textContent = lineInfo(ref.y / H, ref !== pts[0]);
+    if (mode === "line") angleEl.textContent = lineInfo(ref.y / H, headAxis);
     else angleEl.textContent = "からだの角度 " + Math.round(a) + "°";
     return;
   }
 
   var r;
   if (mode === "line") {
-    r = lcounter.update({y: ref.y / H, hipY: pts[1].y, len: tlen, top: lines.top, bottom: lines.bottom});
-    angleEl.textContent = lineInfo(ref.y / H, ref !== pts[0]);
+    r = lcounter.update({y: ref.y / H, hipY: pts[1].y, len: llen, top: lines.top, bottom: lines.bottom, t: performance.now(), dt: frameDt});
+    angleEl.textContent = lineInfo(ref.y / H, headAxis);
   } else if (mode === "height") {
     r = hcounter.update({shoulderY: pts[0].y, hipY: pts[1].y, len: tlen});
     if (r.baseY !== null && r.len) {
@@ -1039,7 +1069,7 @@ function drawLines(){
 }
 function lineInfo(f, isHead){
   var where = f <= lines.top ? "上の線より上" : f >= lines.bottom ? "下の線より下" : "線のあいだ";
-  return (isHead ? "頭の位置：" : "肩の位置（頭が見えません）：") + where;
+  return (isHead ? "頭の位置：" : "肩の位置（頭が見えません）：") + where + (fpsAvg ? "　速さ " + Math.round(fpsAvg) + "コマ/秒" : "");
 }
 var LINE_STEP = 0.03;
 $("topUp").addEventListener("click", function(){ setLines(lines.top - LINE_STEP, lines.bottom); });
