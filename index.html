@@ -176,7 +176,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
     <li>スマホを床かいすに立てかけ、寝た姿の頭と腰が映るようにします（線で数えるときは肩は使いません）。</li>
     <li>「準備へ」を押します。横向き・全画面になり、カメラが始まります（はじめてのときは、カメラとマイクを「許可」します）。</li>
     <li>画面に<b>緑の線（上の線）</b>と<b>青い線（下の線）</b>が出ます。<b>頭の中心（オレンジの点）</b>が上の線より上に来ると1回、下の線より下に戻ると次を数えられます。線は「上の線▲▼」「下の線▲▼」のボタンか、画面の線を指で上下に動かして合わせます。</li>
-    <li>線を自分で合わせるのが大変なときは、「自分に合わせる」を押すか、準備の画面で「合わせて」と言い、声の案内にしたがうと、線が自動で決まります。</li>
+    <li>線を自分で合わせるのが大変なときは、「自分に合わせる」を押すか、準備の画面で「合わせて」と言い、案内にしたがっていつもどおり腹筋を3回すると、実際に戻った位置と上がった位置から線が自動で決まります。</li>
     <li>位置が合ったら「スタート」を押すか、「スタート」と言います。5から1まで数えたあと「はじめ」で数え始めます。</li>
     <li>休むときは「ストップ」と言うか「一時停止」を押し、続けるときは「スタート」と言うか「再開」を押します。途中で「何回？」と聞くと、今の回数を声で教えます。終わるときは「おわり」と言うか「おわり」を押します。</li>
     <li>もっと広く映したいときは、「カメラ」で別のレンズを選んでみてください（スマホによっては、うしろの広角レンズが選べます）。</li>
@@ -357,6 +357,39 @@ function headCenter(lm){
   if (sw < 0.5) return null;
   return {x: sx / sw, y: sy / sw};
 }
+/* 実際に何回か腹筋したときの頭の位置の列 ys（0〜1、下ほど大きい）から、上の線・下の線を決める。
+   いちばん下は「最初に寝ていた位置」ではなく、「腹筋と腹筋のあいだで実際に戻った位置」を使う */
+function computeLineFromReps(ys){
+  var fail = {ok: false, reps: 0};
+  if (!ys || ys.length < 15) return fail;
+  var sm = [];
+  for (var i = 0; i < ys.length; i++) {
+    var lo = Math.max(0, i - 1), hi = Math.min(ys.length - 1, i + 1), t = 0;
+    for (var j = lo; j <= hi; j++) t += ys[j];
+    sm.push(t / (hi - lo + 1));
+  }
+  var sorted = sm.slice().sort(function(a, b){ return a - b; });
+  var pk = sorted[Math.floor(sorted.length * 0.05)], bt = sorted[Math.floor(sorted.length * 0.95)];
+  if (!(bt - pk >= 0.05)) return fail;
+  var mid = (pk + bt) / 2;
+  // 頭が真ん中より上にある区間＝1回の腹筋。区間ごとの頂上と、区間と区間のあいだの谷を集める
+  var peaks = [], valleys = [], inUp = false, cur = null, seenUp = false;
+  for (var k = 0; k < sm.length; k++) {
+    var up = sm[k] < mid;
+    if (up && !inUp) { if (seenUp && cur !== null) valleys.push(cur); inUp = true; seenUp = true; cur = sm[k]; }
+    else if (!up && inUp) { peaks.push(cur); inUp = false; cur = sm[k]; }
+    else if (up) cur = Math.min(cur, sm[k]);
+    else if (seenUp) cur = Math.max(cur, sm[k]);
+  }
+  if (inUp) peaks.push(cur);
+  if (peaks.length < 1) return fail;
+  var top = median(peaks);
+  var bottom = valleys.length ? median(valleys) : bt;   // 2回以上できていれば、腹筋のあいだの谷を使う
+  var range = bottom - top;
+  if (!(range >= 0.04)) return fail;
+  var c = clampLines(bottom - 0.60 * range, bottom - 0.35 * range);
+  return {ok: true, reps: peaks.length, rest: bottom, reach: top, top: c.top, bottom: c.bottom};
+}
 /* 線の位置を正しい範囲にそろえる */
 function clampLines(top, bottom){
   top = Math.max(0.03, Math.min(0.90, top));
@@ -462,6 +495,7 @@ var MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pos
 
 var COUNTDOWN_SEC = 5;
 var CALIB_SETTLE_MS = 4000, CALIB_LYING_MS = 2000, CALIB_UP_MS = 4000;
+var CALIB_REPS = 3, CALIB_REPS_MAX_MS = 20000;   // 線で数えるときの合わせ方：いつもどおり3回してもらう
 
 var $ = function(id){ return document.getElementById(id); };
 var video = $("video"), canvas = $("overlay"), ctx = canvas.getContext("2d");
@@ -859,6 +893,34 @@ async function calibrate(){
     }
   };
   var lying = [], ups = [], lyY = [], lyLen = [], upY = [], lyF = [], upF = [];
+
+  if ($("mode").value === "line") {
+    // 線で数えるとき：いつもどおり腹筋を3回してもらい、実際に戻った位置・上がった位置から線を決める
+    var ys = [];
+    msg("いつもどおり、腹筋を" + CALIB_REPS + "回してください", "good");
+    speakText("いつもどおり、腹筋を" + CALIB_REPS + "回してください。どうぞ");
+    if (!(await wait(2500, id))) { busy = false; calibBtn.disabled = false; return; }
+    calibSink = function(a, t, sy, len, f){ ys.push(f); };
+    var t0 = performance.now(), res = {ok: false, reps: 0}, lastSaid = 0;
+    while (performance.now() - t0 < CALIB_REPS_MAX_MS) {
+      if (!(await wait(400, id))) { calibSink = null; busy = false; calibBtn.disabled = false; return; }
+      res = computeLineFromReps(ys);
+      if (res.ok && res.reps > lastSaid && res.reps < CALIB_REPS) { lastSaid = res.reps; speakText(res.reps); }
+      // 3回目の頂上から戻ってきたら終わり
+      if (res.ok && res.reps >= CALIB_REPS && ys.length && ys[ys.length - 1] > (res.reach + res.rest) / 2) break;
+    }
+    calibSink = null;
+    if (!res.ok || res.reps < 2) {
+      finish("うまく測れませんでした。いつもの腹筋を" + CALIB_REPS + "回、もう一度お試しください", "bad");
+      speakText("うまく測れませんでした");
+      return;
+    }
+    setLines(res.top, res.bottom);
+    $("calibStatus").textContent = "線の位置を合わせました（" + res.reps + "回分から）";
+    finish("線の位置を合わせました", "good");
+    speakText("合わせました");
+    return;
+  }
 
   msg("いつもの寝た姿勢（背もたれにもたれた姿勢）で、じっとしてください", "good"); speakText("いつもの寝た姿勢で、じっとしてください");
   if (!(await wait(CALIB_SETTLE_MS, id))) { busy = false; calibBtn.disabled = false; return; }
