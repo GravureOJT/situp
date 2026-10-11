@@ -306,12 +306,16 @@ function makeHeightCounter(level){
 /* ---- 線で数える：画面の「上の線」より頭の中心が上がったら1回、「下の線」より下に戻ったら次を数えられる ----
    update({y, hipY, len, top, bottom}) -> {counted, retracted, state, rejected}
    y/top/bottom は画面の上下位置（0=いちばん上、1=いちばん下）、hipY・len はピクセル */
-var L_HOLD_MS = 120;   // 上の線を何ミリ秒超えたら1回か（コマ数ではなく時間で見る。処理が遅いスマホでも数えやすい）
+var L_HOLD_MS = 80;    // 上の線を何ミリ秒超えたら1回か（コマ数ではなく時間で見る。処理が遅いスマホでも数えやすい）
 var L_HOLD_MIN = 2;    // ただし最低これだけのコマ数は続けて超えること（1コマだけの読み違いを防ぐ）
+var L_DOWN_MIN = 2;    // 下の線より下に、これだけのコマ続けていたら次を数えられる（一瞬のぶれで2回数えない）
+var L_GAP_MS = 700;    // 1回数えたら、これだけのあいだは次を数えない（同じ1回を2度数えない）
+var L_HIGH_N = 4;      // 腰の上がりがこれだけのコマ続いたら「立ち上がり」とみなす（一瞬の読み違いでは取り消さない）
 function makeLineCounter(){
   var sy = null, hy = null, hanchor = null, armed = true, above = 0, aboveT = null, since = null;
+  var below = 0, lastCountT = -1e9, highN = 0;
   return {
-    reset: function(){ sy = null; hy = null; hanchor = null; armed = true; above = 0; aboveT = null; since = null; },
+    reset: function(){ sy = null; hy = null; hanchor = null; armed = true; above = 0; aboveT = null; since = null; below = 0; lastCountT = -1e9; highN = 0; },
     update: function(o){
       // 処理が遅いとき（コマの間隔が長いとき）は、ならしを弱めて今の位置をすぐ使う
       var k = o.dt && o.dt > 90 ? 0.8 : 0.5;
@@ -319,7 +323,9 @@ function makeLineCounter(){
       hy = hy === null ? o.hipY : hy * 0.5 + o.hipY * 0.5;
       if (hanchor === null || hy > hanchor) hanchor = hy;            // 腰のいちばん低い位置
       else hanchor += (hy - hanchor) * H_DECAY;
-      var tooHigh = o.len > 20 && (hanchor - hy) / o.len > H_MAX_HIP_RISE;   // 立ち上がり
+      var hipHigh = o.len > 20 && (hanchor - hy) / o.len > H_MAX_HIP_RISE;
+      highN = hipHigh ? highN + 1 : 0;
+      var tooHigh = highN >= L_HIGH_N;   // 立ち上がり（何コマか続いたときだけ）
       var counted = false, rejected = false, retracted = false;
       if (since !== null) {
         since++;
@@ -332,12 +338,17 @@ function makeLineCounter(){
           if (above === 0) aboveT = now;
           above++;
           var held = o.t ? (now - aboveT >= L_HOLD_MS && above >= L_HOLD_MIN) : false;
-          if (held || above >= H_HOLD_FRAMES) { armed = false; above = 0; counted = true; since = 0; }
-        } else if (sy <= o.top) { armed = false; above = 0; rejected = true; }
+          var gapOk = !o.t || now - lastCountT >= L_GAP_MS;
+          if ((held || above >= H_HOLD_FRAMES) && gapOk) { armed = false; above = 0; counted = true; since = 0; lastCountT = now; below = 0; }
+        } else if (sy <= o.top) { armed = false; above = 0; rejected = true; below = 0; }
         else above = 0;
       } else {
         above = 0;
-        if (sy >= o.bottom) armed = true;
+        if (sy >= o.bottom) {
+          below++;
+          var downOk = below >= (o.dt && o.dt > 90 ? 1 : L_DOWN_MIN);   // 処理が遅いスマホでは1コマでよい
+          if (downOk) { armed = true; below = 0; }
+        } else below = 0;
       }
       return {counted: counted, retracted: retracted, state: armed ? 'down' : 'up', rejected: rejected};
     }
@@ -356,6 +367,17 @@ function headCenter(lm){
   });
   if (sw < 0.5) return null;
   return {x: sx / sw, y: sy / sw};
+}
+/* 頭の位置を、肩(s)と腰(h)を軸にした座標 {a: 胴の向きに何倍, b: 横に何倍} で表す（体が起きても同じ値になる） */
+function headToRel(x, y, s, h){
+  var ux = s.x - h.x, uy = s.y - h.y, L2 = ux * ux + uy * uy;
+  if (!(L2 > 400)) return null;
+  var dx = x - s.x, dy = y - s.y;
+  return {a: (dx * ux + dy * uy) / L2, b: (dx * -uy + dy * ux) / L2};
+}
+function relToHead(r, s, h){
+  var ux = s.x - h.x, uy = s.y - h.y;
+  return {x: s.x + r.a * ux - r.b * uy, y: s.y + r.a * uy + r.b * ux};
 }
 /* 実際に何回か腹筋したときの頭の位置の列 ys（0〜1、下ほど大きい）から、上の線・下の線を決める。
    いちばん下は「最初に寝ていた位置」ではなく、「腹筋と腹筋のあいだで実際に戻った位置」を使う */
@@ -985,6 +1007,7 @@ function loop(){
 var LEFT = [11, 23, 25], RIGHT = [12, 24, 26];
 var frameDt = 0, lastFrameAt = 0, fpsAvg = 0;
 var lastHead = null, lastHeadAt = 0;   // 頭が一瞬見えなくなったときに、直前の位置を少しのあいだ使う
+var headRel = null;   // 頭の位置を「肩と腰」を基準に覚えておく（顔がひざに隠れても、肩から頭の位置を推定する）
 
 function handle(res){
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1023,8 +1046,17 @@ function handle(res){
   var tilt = torsoTilt(pts[0], pts[1]);
   // 線で数えるときの基準点：頭の中心（見えないときは肩）
   var hc = headCenter(lm), tnow = performance.now();
-  if (hc) { lastHead = hc; lastHeadAt = tnow; }
-  else if (lastHead && tnow - lastHeadAt < 600) hc = lastHead;
+  var shV = lm[side[0]].visibility >= 0.4;
+  if (hc) {
+    lastHead = hc; lastHeadAt = tnow;
+    if (shV) {
+      var rel = headToRel(hc.x * W, hc.y * H, pts[0], pts[1]);
+      if (rel) headRel = headRel ? {a: headRel.a * 0.9 + rel.a * 0.1, b: headRel.b * 0.9 + rel.b * 0.1} : rel;
+    }
+  } else if (shV && headRel) {
+    var est = relToHead(headRel, pts[0], pts[1]);   // 顔が見えないときは肩から推定
+    hc = {x: est.x / W, y: est.y / H};
+  } else if (lastHead && tnow - lastHeadAt < 600) hc = lastHead;
   var ref = (mode === "line" && hc) ? {x: hc.x * W, y: hc.y * H} : pts[0];
   var headAxis = ref !== pts[0];   // 頭と腰の2点で見ている
   // 頭が見えず肩で代わりに見るときは、肩も見えている必要がある
