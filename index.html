@@ -88,8 +88,8 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 </style>
 </head>
 <body>
-<h1>腹筋カウンター <small style="font-size:.5em;opacity:.7">版番号 261012.2</small></h1>
-<div id="verTag" style="position:fixed;left:6px;bottom:4px;z-index:9999;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;pointer-events:none">版番号 261012.2</div>
+<h1>腹筋カウンター <small style="font-size:.5em;opacity:.7">版番号 261012.3</small></h1>
+<div id="verTag" style="position:fixed;left:6px;bottom:4px;z-index:9999;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;pointer-events:none">版番号 261012.3</div>
 
 <div class="top">
 <div class="left">
@@ -1013,10 +1013,10 @@ var frameDt = 0, lastFrameAt = 0, fpsAvg = 0;
 var lastHead = null, lastHeadAt = 0;   // 頭が一瞬見えなくなったときに、直前の位置を少しのあいだ使う
 var headRel = null;
 /* 動きの記録（うまく数えられないときに、原因を調べるため。スマホの中だけに残り、自動ではどこにも送らない） */
-var APP_VER = "261012.2";   // 版の番号（年月日＋その日の何回目。261012.2＝26年10月12日の2回目）。画面の左下にも出す
+var APP_VER = "261012.3";   // 版の番号（年月日＋その日の何回目。261012.3＝26年10月12日の3回目）。画面の左下にも出す
 var frameLog = [], logT0 = 0;
 function logFrame(o){ if (frameLog.length < 30000) frameLog.push(o); }
-function saveLog(){
+function saveMotionLog(){
   if (!frameLog.length) return;
   var d = new Date(), p2 = function(n){ return String(n).padStart(2, "0"); };
   var name = "situp-log-" + String(d.getFullYear()).slice(2) + p2(d.getMonth() + 1) + p2(d.getDate()) + "-" + p2(d.getHours()) + p2(d.getMinutes()) + ".json";
@@ -1237,7 +1237,7 @@ $("zoom").addEventListener("change", async function(){
   if (running) { try { await openCamera(); } catch(e){ msg("カメラを切り替えられませんでした", "bad"); } }
 });
 $("sens").addEventListener("change", function(){ setLevelAll($("sens").value); lsSet("situp-sens", $("sens").value); });
-$("logBtn").addEventListener("click", saveLog);
+$("logBtn").addEventListener("click", saveMotionLog);
 $("voice").addEventListener("change", function(){ lsSet("situp-voice", $("voice").value); });
 $("vctl").addEventListener("change", function(){
   lsSet("situp-vctl", $("vctl").value);
