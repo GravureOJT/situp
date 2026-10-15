@@ -88,8 +88,8 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 </style>
 </head>
 <body>
-<h1>腹筋カウンター <small style="font-size:.5em;opacity:.7">版番号 261012.3</small></h1>
-<div id="verTag" style="position:fixed;left:6px;bottom:4px;z-index:9999;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;pointer-events:none">版番号 261012.3</div>
+<h1>腹筋カウンター <small style="font-size:.5em;opacity:.7">版番号 261014.1</small></h1>
+<div id="verTag" style="position:fixed;left:6px;bottom:4px;z-index:9999;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;pointer-events:none">版番号 261014.1</div>
 
 <div class="top">
 <div class="left">
@@ -114,10 +114,10 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   <button id="logBtn" class="quit" hidden>記録を保存</button>
 </div>
 <div class="row" id="lineRow" hidden>
-  <button id="topUp" class="line" aria-label="上の線を上へ">上の線▲</button>
-  <button id="topDn" class="line" aria-label="上の線を下へ">上の線▼</button>
-  <button id="botUp" class="line" aria-label="下の線を上へ">下の線▲</button>
-  <button id="botDn" class="line" aria-label="下の線を下へ">下の線▼</button>
+  <button id="topUp" class="line" aria-label="前の線を前へ">前の線<br>前へ</button>
+  <button id="topDn" class="line" aria-label="前の線を後ろへ">前の線<br>後ろへ</button>
+  <button id="botUp" class="line" aria-label="後ろの線を前へ">後ろの線<br>前へ</button>
+  <button id="botDn" class="line" aria-label="後ろの線を後ろへ">後ろの線<br>後ろへ</button>
 </div>
 <div class="row">
   <button id="minus" class="sub" aria-label="1回へらす">−1</button>
@@ -132,7 +132,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   <h2>せってい</h2>
   <label>かぞえかた
     <select id="mode">
-      <option value="line">線（位置を自分で決める）</option>
+      <option value="line">線（頭の前後の位置）</option>
       <option value="height">高さ（自動）</option>
       <option value="angle">ひざと体の角度</option>
     </select>
@@ -177,7 +177,7 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   <ol>
     <li>スマホを床かいすに立てかけ、寝た姿の頭と腰が映るようにします（線で数えるときは肩は使いません）。</li>
     <li>「準備へ」を押します。横向き・全画面になり、カメラが始まります（はじめてのときは、カメラとマイクを「許可」します）。</li>
-    <li>画面に<b>緑の線（上の線）</b>と<b>青い線（下の線）</b>が出ます。<b>頭の中心（オレンジの点）</b>が上の線より上に来ると1回、下の線より下に戻ると次を数えられます。線は「上の線▲▼」「下の線▲▼」のボタンか、画面の線を指で上下に動かして合わせます。</li>
+    <li>画面に縦の<b>緑の線（前の線）</b>と<b>青い線（後ろの線）</b>が出ます。<b>頭の中心（オレンジの点）</b>が前の線より前（足のほう）に来ると1回、後ろの線より後ろに戻ると次を数えられます。高さではなく<b>頭の前後の位置</b>で見ます。線は「前の線」「後ろの線」のボタンか、画面の線を指で左右に動かして合わせます。前がどちらかは、ひざ（見えなければ腰）の向きから自動で決めます。</li>
     <li>線を自分で合わせるのが大変なときは、「自分に合わせる」を押すか、準備の画面で「合わせて」と言い、案内にしたがっていつもどおり腹筋を3回すると、実際に戻った位置と上がった位置から線が自動で決まります。</li>
     <li>位置が合ったら「スタート」を押すか、「スタート」と言います。5から1まで数えたあと「はじめ」で数え始めます。</li>
     <li>休むときは「ストップ」と言うか「一時停止」を押し、続けるときは「スタート」と言うか「再開」を押します。途中で「何回？」と聞くと、今の回数を声で教えます。終わるときは「おわり」と言うか「おわり」を押します。</li>
@@ -381,7 +381,7 @@ function relToHead(r, s, h){
   var ux = s.x - h.x, uy = s.y - h.y;
   return {x: s.x + r.a * ux - r.b * uy, y: s.y + r.a * uy + r.b * ux};
 }
-/* 実際に何回か腹筋したときの頭の位置の列 ys（0〜1、下ほど大きい）から、上の線・下の線を決める。
+/* 実際に何回か腹筋したときの頭の前後の位置の列 ys（0〜1、後ろほど大きい）から、前の線・後ろの線を決める。
    いちばん下は「最初に寝ていた位置」ではなく、「腹筋と腹筋のあいだで実際に戻った位置」を使う */
 function computeLineFromReps(ys){
   var fail = {ok: false, reps: 0};
@@ -533,12 +533,18 @@ var lcounter = makeLineCounter();
 function setLevelAll(l){ counter.setLevel(l); hcounter.setLevel(l); }
 function resetCounters(){ counter.reset(); hcounter.reset(); lcounter.reset(); setLevelAll($("sens").value); }
 
-/* ---- 上の線・下の線 ---- */
+/* ---- 前の線・後ろの線 ----
+   頭の「前後の位置」で数える。位置は g（0〜1、小さいほど前＝足のほう）で持つ。
+   lines.top＝前の線（ここより前まで頭が来たら1回）、lines.bottom＝後ろの線（ここより後ろへ戻ったら次の1回を待つ） */
 var lines = {top: 0.35, bottom: 0.60};
-try { var sl = JSON.parse(localStorage.getItem("situp-lines") || "null"); if (sl && isFinite(sl.top) && isFinite(sl.bottom)) lines = clampLines(sl.top, sl.bottom); } catch(e){}
+var fwdDir = 1, dirScore = 0;   // fwdDir：+1＝足が画面（カメラ映像）の右、-1＝左
+try { var sd = +lsGet("situp-fwd"); if (sd === 1 || sd === -1) { fwdDir = sd; dirScore = sd * 0.1; } } catch(e){}
+function toG(fx){ return fwdDir > 0 ? 1 - fx : fx; }   // 映像の横位置(0〜1) → 前後の位置 g
+function fromG(g){ return fwdDir > 0 ? 1 - g : g; }
+try { var sl = JSON.parse(localStorage.getItem("situp-lines-x") || "null"); if (sl && isFinite(sl.top) && isFinite(sl.bottom)) lines = clampLines(sl.top, sl.bottom); } catch(e){}
 function setLines(top, bottom){
   lines = clampLines(top, bottom);
-  lsSet("situp-lines", JSON.stringify(lines));
+  lsSet("situp-lines-x", JSON.stringify(lines));
 }
 var locker = makeSideLocker();
 var session = 0;
@@ -1013,7 +1019,7 @@ var frameDt = 0, lastFrameAt = 0, fpsAvg = 0;
 var lastHead = null, lastHeadAt = 0;   // 頭が一瞬見えなくなったときに、直前の位置を少しのあいだ使う
 var headRel = null;
 /* 動きの記録（うまく数えられないときに、原因を調べるため。スマホの中だけに残り、自動ではどこにも送らない） */
-var APP_VER = "261012.3";   // 版の番号（年月日＋その日の何回目。261012.3＝26年10月12日の3回目）。画面の左下にも出す
+var APP_VER = "261014.1";   // 版の番号（年月日＋その日の何回目。261012.3＝26年10月12日の3回目）。画面の左下にも出す
 var frameLog = [], logT0 = 0;
 function logFrame(o){ if (frameLog.length < 30000) frameLog.push(o); }
 function saveMotionLog(){
@@ -1096,9 +1102,22 @@ function handle(res){
   var tlen = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
   // 立ち上がりを見分けるための胴の長さ。頭と腰で見るときは、頭〜腰の長さを肩〜腰相当に直して使う
   var llen = headAxis ? Math.hypot(pts[1].x - ref.x, pts[1].y - ref.y) / 1.4 : tlen;
-  if (calibSink) calibSink(a, tilt, pts[0].y, tlen, ref.y / H);
+  // 前（足のほう）が画面の右か左かを決める。ひざが見えれば腰→ひざの向き、見えなければ頭→腰の向き。
+  // 数えている間と合わせている間は変えない（途中で向きが変わると数えまちがえるため）
+  if (mode === "line" && phase !== "counting" && phase !== "calib") {
+    var kn = lm[side[2]], hx = lm[side[1]].x, dd = null;
+    if (kn && kn.visibility >= 0.4) dd = kn.x - hx;
+    else if (headAxis) dd = hx - ref.x / W;
+    if (dd !== null && Math.abs(dd) > 0.02) {
+      dirScore = dirScore * 0.95 + (dd > 0 ? 0.05 : -0.05);
+      var nd = dirScore >= 0 ? 1 : -1;
+      if (Math.abs(dirScore) > 0.3 && nd !== fwdDir) { fwdDir = nd; lsSet("situp-fwd", String(nd)); }
+    }
+  }
+  var gHead = toG(ref.x / W);   // 頭の前後の位置（小さいほど前）
+  if (calibSink) calibSink(a, tilt, pts[0].y, tlen, gHead);
   if (phase !== "counting") {
-    if (mode === "line") angleEl.textContent = lineInfo(ref.y / H, headAxis);
+    if (mode === "line") angleEl.textContent = lineInfo(gHead, headAxis);
     else angleEl.textContent = "からだの角度 " + Math.round(a) + "°";
     return;
   }
@@ -1106,10 +1125,10 @@ function handle(res){
   var r;
   if (mode === "line") {
     // 線で数えるときは「立ち上がり」の取り消しはしない（腹筋くんで腰の点が跳ぶと、正しい1回まで取り消してしまうため）
-    r = lcounter.update({y: ref.y / H, hipY: pts[1].y, len: 0, top: lines.top, bottom: lines.bottom, t: performance.now(), dt: frameDt});
-    logFrame({t: Math.round(performance.now() - logT0), y: +(ref.y / H).toFixed(3), hip: +(pts[1].y / H).toFixed(3), src: headSrc,
+    r = lcounter.update({y: gHead, hipY: pts[1].y, len: 0, top: lines.top, bottom: lines.bottom, t: performance.now(), dt: frameDt});
+    logFrame({t: Math.round(performance.now() - logT0), g: +gHead.toFixed(3), x: +(ref.x / W).toFixed(3), y: +(ref.y / H).toFixed(3), dir: fwdDir, hip: +(pts[1].y / H).toFixed(3), src: headSrc,
       st: r.state === "up" ? 1 : 0, ev: r.counted ? "c" : (r.rejected ? "r" : ""), top: lines.top, bot: lines.bottom, fps: Math.round(fpsAvg)});
-    angleEl.textContent = lineInfo(ref.y / H, headAxis);
+    angleEl.textContent = lineInfo(gHead, headAxis);
   } else if (mode === "height") {
     r = hcounter.update({shoulderY: pts[0].y, hipY: pts[1].y, len: tlen});
     if (r.baseY !== null && r.len) {
@@ -1141,9 +1160,9 @@ function handle(res){
   } else if (performance.now() < holdUntil) {
     // 直前の案内を少し残す
   } else if (r.state === "down") {
-    msg(mode === "line" ? "上の線（緑）まで起き上がってください" : "起き上がってください", "");
+    msg(mode === "line" ? "前の線（緑）まで起き上がってください" : "起き上がってください", "");
   } else if (r.state === "up") {
-    msg(mode === "line" ? "下の線（青）まで戻ってください" : "ゆっくり戻ってください", "");
+    msg(mode === "line" ? "後ろの線（青）まで戻ってください" : "ゆっくり戻ってください", "");
   } else {
     msg("仰向けになってください", "");
   }
@@ -1165,24 +1184,30 @@ function goLandscape(){
 function drawLines(){
   var W = canvas.width, H = canvas.height;
   if (!W || !H) return;
-  var one = function(f, color, label){
-    var y = f * H;
+  var mir = stage.classList.contains("mirror");
+  var fs = Math.max(20, Math.round(H / 18));
+  var one = function(g, color, label, row){
+    var x = fromG(g) * W;   // 映像の上での横位置
     ctx.save();
-    ctx.strokeStyle = color; ctx.lineWidth = Math.max(4, H / 120); ctx.setLineDash([18, 10]);
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = Math.max(4, W / 160); ctx.setLineDash([18, 10]);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
     ctx.setLineDash([]);
-    // 文字は鏡写しにならないように向きを直す
-    var fs = Math.max(20, Math.round(H / 18));
+    // 文字は鏡写しにならないように向きを直す。線の前（足のほう）側に書く
     ctx.font = "bold " + fs + "px sans-serif"; ctx.fillStyle = color;
-    if (stage.classList.contains("mirror")) { ctx.translate(W, 0); ctx.scale(-1, 1); }
-    ctx.fillText(label, 12, y - 8);
+    var sx = mir ? W - x : x;                          // 見た目の横位置
+    var fwdOnScreen = (fwdDir > 0) !== mir ? 1 : -1;   // 見た目で前が右なら +1
+    var tw = ctx.measureText(label).width;
+    var tx = fwdOnScreen > 0 ? sx + 10 : sx - 10 - tw;
+    tx = Math.max(4, Math.min(W - tw - 4, tx));
+    if (mir) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+    ctx.fillText(label, tx, fs + 8 + row * (fs + 8));
     ctx.restore();
   };
-  one(lines.top, "#4cd08a", "上の線");
-  one(lines.bottom, "#4aa8ff", "下の線");
+  one(lines.top, "#4cd08a", "前の線", 0);
+  one(lines.bottom, "#4aa8ff", "後ろの線", 1);
 }
 function lineInfo(f, isHead){
-  var where = f <= lines.top ? "上の線より上" : f >= lines.bottom ? "下の線より下" : "線のあいだ";
+  var where = f <= lines.top ? "前の線より前" : f >= lines.bottom ? "後ろの線より後ろ" : "線のあいだ";
   return (isHead ? "頭の位置：" : "肩の位置（頭が見えません）：") + where + (fpsAvg ? "　速さ " + Math.round(fpsAvg) + "コマ/秒" : "");
 }
 var LINE_STEP = 0.03;
@@ -1190,11 +1215,16 @@ $("topUp").addEventListener("click", function(){ setLines(lines.top - LINE_STEP,
 $("topDn").addEventListener("click", function(){ setLines(lines.top + LINE_STEP, Math.max(lines.bottom, lines.top + LINE_STEP + 0.05)); });
 $("botUp").addEventListener("click", function(){ setLines(Math.min(lines.top, lines.bottom - LINE_STEP - 0.05), lines.bottom - LINE_STEP); });
 $("botDn").addEventListener("click", function(){ setLines(lines.top, lines.bottom + LINE_STEP); });
-// 画面の線を指で上下に動かす
+// 画面の線を指で左右に動かす
 var dragging = null;
+function pointerG(e){
+  var r = stage.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width;
+  if (stage.classList.contains("mirror")) fx = 1 - fx;   // 見た目の位置 → 映像の上の位置
+  return toG(fx);
+}
 stage.addEventListener("pointerdown", function(e){
   if ($("mode").value !== "line" || !running) return;
-  var r = stage.getBoundingClientRect(), f = (e.clientY - r.top) / r.height;
+  var f = pointerG(e);
   var dt = Math.abs(f - lines.top), db = Math.abs(f - lines.bottom);
   if (Math.min(dt, db) > 0.10) return;
   dragging = dt <= db ? "top" : "bottom";
@@ -1203,7 +1233,7 @@ stage.addEventListener("pointerdown", function(e){
 });
 stage.addEventListener("pointermove", function(e){
   if (!dragging) return;
-  var r = stage.getBoundingClientRect(), f = (e.clientY - r.top) / r.height;
+  var f = pointerG(e);
   if (dragging === "top") setLines(Math.min(f, lines.bottom - 0.05), lines.bottom);
   else setLines(lines.top, Math.max(f, lines.top + 0.05));
 });
