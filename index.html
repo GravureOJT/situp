@@ -88,8 +88,8 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 </style>
 </head>
 <body>
-<h1>腹筋カウンター <small style="font-size:.5em;opacity:.7">版番号 261014.1</small></h1>
-<div id="verTag" style="position:fixed;left:6px;bottom:4px;z-index:9999;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;pointer-events:none">版番号 261014.1</div>
+<h1>腹筋カウンター <small style="font-size:.5em;opacity:.7">版番号 261021.1</small></h1>
+<div id="verTag" style="position:fixed;left:6px;bottom:4px;z-index:9999;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;pointer-events:none">版番号 261021.1</div>
 
 <div class="top">
 <div class="left">
@@ -118,6 +118,9 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
   <button id="topDn" class="line" aria-label="前の線を後ろへ">前の線<br>後ろへ</button>
   <button id="botUp" class="line" aria-label="後ろの線を前へ">後ろの線<br>前へ</button>
   <button id="botDn" class="line" aria-label="後ろの線を後ろへ">後ろの線<br>後ろへ</button>
+</div>
+<div class="row" id="realignRow" hidden>
+  <button id="realignBtn" class="sub wide">寝た位置で線を合わせ直す（声：「合わせて」）</button>
 </div>
 <div class="row">
   <button id="minus" class="sub" aria-label="1回へらす">−1</button>
@@ -180,6 +183,8 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
     <li>画面に縦の<b>緑の線（前の線）</b>と<b>青い線（後ろの線）</b>が出ます。<b>頭の中心（オレンジの点）</b>が前の線より前（足のほう）に来ると1回、後ろの線より後ろに戻ると次を数えられます。高さではなく<b>頭の前後の位置</b>で見ます。線は「前の線」「後ろの線」のボタンか、画面の線を指で左右に動かして合わせます。前がどちらかは、ひざ（見えなければ腰）の向きから自動で決めます。</li>
     <li>線を自分で合わせるのが大変なときは、「自分に合わせる」を押すか、準備の画面で「合わせて」と言い、案内にしたがっていつもどおり腹筋を3回すると、実際に戻った位置と上がった位置から線が自動で決まります。</li>
     <li>位置が合ったら「スタート」を押すか、「スタート」と言います。5から1まで数えたあと「はじめ」で数え始めます。</li>
+    <li>腹筋をしているうちに体がすべっても、線は戻った位置を見て<b>自動で少しずつついていきます</b>。大きくずれたときは、<b>寝た姿勢のまま「合わせて」</b>と言うか「寝た位置で線を合わせ直す」を押すと、数えるのを止めずに線だけ今の位置に合わせ直します。</li>
+    <li>数えもれがあったら<b>「プラスいち」</b>（「たして」でも可）と言うと1回たします。数えすぎたら<b>「マイナスいち」</b>（「ひいて」でも可）で1回へらします。</li>
     <li>休むときは「ストップ」と言うか「一時停止」を押し、続けるときは「スタート」と言うか「再開」を押します。途中で「何回？」と聞くと、今の回数を声で教えます。終わるときは「おわり」と言うか「おわり」を押します。</li>
     <li>もっと広く映したいときは、「カメラ」で別のレンズを選んでみてください（スマホによっては、うしろの広角レンズが選べます）。</li>
     <li>「今回」はこの1回分、「今日の合計」は今日ぜんぶの回数です。</li>
@@ -311,48 +316,81 @@ function makeHeightCounter(level){
 var L_HOLD_MS = 80;    // 上の線を何ミリ秒超えたら1回か（コマ数ではなく時間で見る。処理が遅いスマホでも数えやすい）
 var L_HOLD_MIN = 2;    // ただし最低これだけのコマ数は続けて超えること（1コマだけの読み違いを防ぐ）
 var L_DOWN_MIN = 2;    // 下の線より下に、これだけのコマ続けていたら次を数えられる（一瞬のぶれで2回数えない）
-var L_GAP_MS = 1000;   // 1回数えたら、これだけのあいだは次を数えない（同じ1回を2度数えない）
-var L_HIGH_N = 4;      // 腰の上がりがこれだけのコマ続いたら「立ち上がり」とみなす（一瞬の読み違いでは取り消さない）
+var L_GAP_MS = 600;    // 1回数えたら、これだけのあいだは次を数えない（261021.1：1000→600。速い腹筋を取りこぼさない）
+/* 261021.1 で追加：線が体の位置からずれても数えられるようにする
+   ・「振れ幅」でも数える：直前に戻った位置から、いつもの動きの幅（range）の L_SWING_FWD だけ前へ来たら、線に届かなくても1回
+   ・いちばん前から L_SWING_BACK だけ戻ったら、後ろの線まで戻らなくても次を数えられる
+   ・数えるたびに「戻った位置」を見て、体がすべった分だけ線を自動でずらす（線が体についていく） */
+var L_SWING_FWD = 0.6;
+var L_SWING_BACK = 0.45;
+var L_LINE_MIN_FWD = 0.15;   // 線で数えるときも、戻った位置からこれだけは前へ動いていること（その場のゆれで2回数えない）
+var L_FOLLOW = 0.6;          // ずれの何割を1回ごとに直すか
+var L_FOLLOW_MAX = 0.06;     // 1回で動かす線の量の上限（画面の幅に対する割合）
+var L_RANGE_MIN = 0.05, L_RANGE_MAX = 0.6;
 function makeLineCounter(){
-  var sy = null, hy = null, hanchor = null, armed = true, above = 0, aboveT = null, since = null;
-  var below = 0, lastCountT = -1e9, highN = 0;
+  var sy = null, armed = true, above = 0, aboveT = null, below = 0, lastCountT = -1e9;
+  var valley = null, peak = null, lastValley = null, refGap = null, range = null, range0 = null, amps = [];
+  function clampR(r){
+    var lo = range0 ? Math.max(L_RANGE_MIN, range0 * 0.6) : L_RANGE_MIN;
+    return Math.max(lo, Math.min(L_RANGE_MAX, r));
+  }
   return {
-    reset: function(){ sy = null; hy = null; hanchor = null; armed = true; above = 0; aboveT = null; since = null; below = 0; lastCountT = -1e9; highN = 0; },
+    reset: function(){ sy = null; armed = true; above = 0; aboveT = null; below = 0; lastCountT = -1e9; valley = null; peak = null; lastValley = null; amps = []; range = range0; },
+    /* 動きの幅（合わせたときの値）と、「戻った位置〜後ろの線」の間隔。分からなければ null */
+    setMeta: function(r, gap){ range0 = r > 0 ? r : null; range = range0; refGap = gap > 0 ? gap : null; },
+    /* 線を手で動かした・合わせ直したとき：今の線を基準にし直す */
+    rebase: function(gap){ refGap = gap > 0 ? gap : null; },
+    /* 声やボタンで＋1したとき：次の1回を数えられる状態にする（後ろの線まで戻れず止まっていたときのため） */
+    forceArm: function(){ armed = true; above = 0; below = 0; valley = sy; peak = null; },
+    info: function(){ return {range: range, refGap: refGap}; },
     update: function(o){
       // 処理が遅いとき（コマの間隔が長いとき）は、ならしを弱めて今の位置をすぐ使う
       var k = o.dt && o.dt > 90 ? 0.8 : 0.5;
       sy = sy === null ? o.y : sy * (1 - k) + o.y * k;
-      hy = hy === null ? o.hipY : hy * 0.5 + o.hipY * 0.5;
-      if (hanchor === null || hy > hanchor) hanchor = hy;            // 腰のいちばん低い位置
-      else hanchor += (hy - hanchor) * H_DECAY;
-      var hipHigh = o.len > 20 && (hanchor - hy) / o.len > H_MAX_HIP_RISE;
-      highN = hipHigh ? highN + 1 : 0;
-      var tooHigh = highN >= L_HIGH_N;   // 立ち上がり（何コマか続いたときだけ）
-      var counted = false, rejected = false, retracted = false;
-      if (since !== null) {
-        since++;
-        if (tooHigh) { retracted = true; since = null; }
-        else if (since > H_UNDO_FRAMES) since = null;
-      }
       var now = o.t || 0;
+      var counted = false, shift = 0, how = "";
       if (armed) {
-        if (sy <= o.top && !tooHigh) {
+        if (valley === null || sy > valley) valley = sy;     // 戻ったいちばん後ろ
+        var fwd = valley - sy;                                 // そこからどれだけ前へ来たか
+        var byLine = sy <= o.top && (!range || fwd >= L_LINE_MIN_FWD * range);
+        var bySwing = !!range && fwd >= L_SWING_FWD * range;
+        if (byLine || bySwing) {
           if (above === 0) aboveT = now;
           above++;
-          var held = o.t ? (now - aboveT >= L_HOLD_MS && above >= L_HOLD_MIN) : false;
+          var held = o.t ? (now - aboveT >= L_HOLD_MS && above >= L_HOLD_MIN) : above >= L_HOLD_MIN;
           var gapOk = !o.t || now - lastCountT >= L_GAP_MS;
-          if ((held || above >= H_HOLD_FRAMES) && gapOk) { armed = false; above = 0; counted = true; since = 0; lastCountT = now; below = 0; }
-        } else if (sy <= o.top) { armed = false; above = 0; rejected = true; below = 0; }
-        else above = 0;
+          if (held && gapOk) {
+            armed = false; above = 0; counted = true; lastCountT = now; below = 0; peak = sy;
+            how = byLine ? "line" : "swing";
+            // 線を体についていかせる：戻った位置と後ろの線の間隔を、はじめと同じに保つ
+            if (refGap === null) refGap = valley - o.bottom;
+            else {
+              var d = (valley - refGap - o.bottom) * L_FOLLOW;
+              if (Math.abs(d) > 0.008) shift = Math.max(-L_FOLLOW_MAX, Math.min(L_FOLLOW_MAX, d));
+            }
+            lastValley = valley; valley = null;
+          }
+        } else above = 0;
       } else {
         above = 0;
-        if (sy >= o.bottom) {
+        if (peak === null || sy < peak) peak = sy;            // いちばん前
+        var back = !!range && sy - peak >= L_SWING_BACK * range;
+        if (sy >= o.bottom || back) {
           below++;
           var downOk = below >= (o.dt && o.dt > 90 ? 1 : L_DOWN_MIN);   // 処理が遅いスマホでは1コマでよい
-          if (downOk) { armed = true; below = 0; }
+          if (downOk) {
+            armed = true; below = 0; valley = sy;
+            // 動きの幅を覚える（疲れて小さくなっても数えられるように、直近3回の中央値に寄せる）
+            if (lastValley !== null) {
+              amps.push(lastValley - peak); if (amps.length > 3) amps.shift();
+              var a = amps.slice().sort(function(x, y){ return x - y; })[Math.floor(amps.length / 2)];
+              if (a > 0) range = clampR(range ? range * 0.5 + a * 0.5 : a);
+            }
+            peak = null;
+          }
         } else below = 0;
       }
-      return {counted: counted, retracted: retracted, state: armed ? 'down' : 'up', rejected: rejected};
+      return {counted: counted, retracted: false, state: armed ? 'down' : 'up', rejected: false, shift: shift, how: how};
     }
   };
 }
@@ -446,6 +484,9 @@ function makeSideLocker(){
 function matchCommand(text){
   var t = String(text || "").replace(/[\s　、。]/g, "");
   if (/おわり|終わり|終り|終了|しゅうりょう/.test(t)) return "end";
+  // 数えもれ・数えすぎを声で直す（「プラスいち」「たして」／「マイナスいち」「ひいて」）
+  if (/プラス|ぷらす|[＋+]|足して|たして|足す|たす/.test(t)) return "plus";
+  if (/マイナス|まいなす|引いて|ひいて|[－−]/.test(t)) return "minus";
   if (/何回|なんかい|回数|かいすう|いくつ/.test(t)) return "count";
   if (/ストップ|すとっぷ|止めて|とめて|止まれ|一時停止|いちじていし|休憩|きゅうけい|待って|まって/.test(t)) return "pause";
   // アプリが言う「合わせました」は命令にしない
@@ -542,9 +583,28 @@ try { var sd = +lsGet("situp-fwd"); if (sd === 1 || sd === -1) { fwdDir = sd; di
 function toG(fx){ return fwdDir > 0 ? 1 - fx : fx; }   // 映像の横位置(0〜1) → 前後の位置 g
 function fromG(g){ return fwdDir > 0 ? 1 - g : g; }
 try { var sl = JSON.parse(localStorage.getItem("situp-lines-x") || "null"); if (sl && isFinite(sl.top) && isFinite(sl.bottom)) lines = clampLines(sl.top, sl.bottom); } catch(e){}
-function setLines(top, bottom){
+/* 線のおまけ情報：range＝いつもの頭の動きの幅、gap＝寝て戻った位置と後ろの線の間隔（どちらも g の単位。分からなければ null） */
+var lineMeta = {range: null, gap: null};
+try { var lmt = JSON.parse(localStorage.getItem("situp-linemeta") || "null"); if (lmt) lineMeta = {range: lmt.range > 0 ? lmt.range : null, gap: lmt.gap > 0 ? lmt.gap : null}; } catch(e){}
+function saveLineMeta(){ lsSet("situp-linemeta", JSON.stringify(lineMeta)); }
+lcounter.setMeta(lineMeta.range, lineMeta.gap);
+/* how："manual"＝手で動かした（戻る位置が分からなくなるので、次の1回から基準を取り直す） */
+function setLines(top, bottom, how){
   lines = clampLines(top, bottom);
   lsSet("situp-lines-x", JSON.stringify(lines));
+  if (how === "manual") { lineMeta.gap = null; saveLineMeta(); lcounter.rebase(null); }
+}
+/* 数えている途中で、体がすべった分だけ線を動かす（保存はしない。次に開いたときは合わせた線にもどる） */
+var autoShiftSum = 0;
+function shiftLines(d){
+  lines = clampLines(lines.top + d, lines.bottom + d);
+  autoShiftSum += d;
+}
+/* 直近の頭の位置（いまの位置で合わせ直すときに使う） */
+var recentG = [];
+function pushRecentG(g, t){
+  recentG.push({g: g, t: t});
+  while (recentG.length && t - recentG[0].t > 4000) recentG.shift();
 }
 var locker = makeSideLocker();
 var session = 0;
@@ -639,6 +699,7 @@ function camConstraints(){
   // カメラの部品は4:3なので、4:3で受け取ると上下が切れず、いちばん広く映る
   var v = wide ? {width: {ideal: 640}, height: {ideal: 480}, aspectRatio: {ideal: 4 / 3}}
                : {width: {ideal: 640}, height: {ideal: 360}};
+  v.frameRate = {ideal: 30};   // コマ数が少ないと、速い腹筋の頂上を見のがす
   if (camPref.indexOf("dev:") === 0) v.deviceId = {exact: camPref.slice(4)};
   else v.facingMode = camPref;
   return {video: v, audio: false};
@@ -724,6 +785,7 @@ async function boot(){
     locker.reset();
     runId++; phase = "idle";
     running = true; lastTime = -1; lostFrames = 0;
+    updateModeUI();
     requestAnimationFrame(loop);
     return true;
   } catch(e){
@@ -773,7 +835,7 @@ async function beginCountdown(){
 
 /* ---- 声で操作（スタート／ストップ／おわり） ---- */
 var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-var rec = null, listening = false, lastCmdAt = 0;
+var rec = null, listening = false, lastCmdAt = 0, lastFixAt = 0, firedIdx = {};
 var voiceEl = $("voiceState");
 function voiceWanted(){ return !!SR && $("vctl").value === "on"; }
 function showVoice(text, off){ voiceEl.hidden = !text; voiceEl.textContent = text || ""; voiceEl.classList.toggle("off", !!off); }
@@ -786,10 +848,13 @@ function startListening(){
     rec.lang = "ja-JP"; rec.continuous = true; rec.interimResults = true;
     rec.onresult = function(ev){
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
+        // 途中の聞き取りと確定した聞き取りで、同じ言葉を2度実行しない（1つの言葉につき1回だけ）
+        if (firedIdx[i]) continue;
         var cmd = matchCommand(ev.results[i][0].transcript);
-        if (cmd) { onVoice(cmd); break; }
+        if (cmd) { firedIdx[i] = true; onVoice(cmd); break; }
       }
     };
+    rec.onstart = function(){ firedIdx = {}; };
     rec.onerror = function(ev){
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
         listening = false;
@@ -802,7 +867,7 @@ function startListening(){
     };
   }
   try { rec.start(); } catch(e){}
-  showVoice("声の操作：「合わせて」「スタート」「ストップ」「何回？」「おわり」");
+  showVoice("声の操作：「合わせて」「スタート」「プラスいち」「マイナスいち」「ストップ」「何回？」「おわり」");
   return true;
 }
 function stopListening(){
@@ -813,6 +878,13 @@ function stopListening(){
 function onVoice(cmd){
   var now = performance.now();
   if (now < muteUntil) return;
+  if (cmd === "plus" || cmd === "minus") {
+    // 数えている間・一時停止中だけ。続けて言えるよう、間かくは短め
+    if (!(phase === "counting" || phase === "paused") || now - lastFixAt < 700) return;
+    lastFixAt = now;
+    if (cmd === "plus") addOne(true); else subOne(true);
+    return;
+  }
   if (now - lastCmdAt < 1500) return;   // 同じ言葉を何度も拾わない
   if (cmd === "count") {
     if (!running) return;
@@ -825,6 +897,8 @@ function onVoice(cmd){
   } else if (cmd === "calib") {
     // 「合わせて」：数える前（準備中）か一時停止中に、自分に合わせるを始める
     if (running && (phase === "waiting" || phase === "paused") && now > calibDoneAt + 4000) { lastCmdAt = now; calibrate(); }
+    // 数えている途中なら、止めずに線だけ今の位置へ合わせ直す
+    else if (phase === "counting" && $("mode").value === "line") { lastCmdAt = now; realignNow(); }
   } else if (cmd === "start") {
     if (phase === "waiting") { lastCmdAt = now; beginCountdown(); }
     else if (phase === "paused") { lastCmdAt = now; resume(); }
@@ -860,8 +934,9 @@ async function resume(){
 }
 
 function stop(text, kind){
-  runId++; running = false; phase = "idle"; calibSink = null;
+  runId++; running = false; phase = "idle"; calibSink = null; realigning = false;
   stopListening();
+  updateModeUI();
   if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
   stream = null;
   try { if (wakeLock) wakeLock.release(); } catch(e){}
@@ -874,6 +949,53 @@ function stop(text, kind){
   msg(text || (session + " 回でした。おつかれさまでした！"), kind || "good");
   if (!text) speakText(session + "回でした。今日の合計は" + todayTotal() + "回です。おつかれさまでした");
   angleEl.textContent = "";
+}
+
+/* ---- いまの位置で合わせ直す（数えるのは止めずに、線だけを今の寝た位置へずらす） ----
+   腹筋をしているうちに体が足のほう・頭のほうへすべって、線と合わなくなったときに使う */
+var realigning = false;
+async function realignNow(){
+  if (!running || $("mode").value !== "line" || realigning) return;
+  if (phase !== "counting" && phase !== "paused" && phase !== "waiting") return;
+  realigning = true;
+  var id = runId;
+  msg("寝た姿勢のまま、少しじっとしてください", "good"); holdUntil = performance.now() + 1600;
+  speakText("寝たまま、じっと");
+  var ok = await wait(1300, id);
+  realigning = false;
+  if (!ok) return;
+  var tnow = performance.now();
+  // 直近3秒の頭の位置のうち、いちばん後ろに近いところ（＝寝て戻った位置）を使う
+  var gs = recentG.filter(function(p){ return tnow - p.t <= 3000; }).map(function(p){ return p.g; });
+  if (gs.length < 5) {
+    msg("頭が見えないので合わせ直せませんでした", "bad"); holdUntil = performance.now() + 2500;
+    speakText("頭が見えません");
+    return;
+  }
+  gs.sort(function(a, b){ return a - b; });
+  var rest = gs[Math.floor(gs.length * 0.9)];
+  var span = lines.bottom - lines.top;
+  var gap = lineMeta.gap || (lineMeta.range ? 0.35 * lineMeta.range : Math.max(0.03, span * 0.6));
+  setLines(rest - gap - span, rest - gap);
+  lineMeta.gap = rest - lines.bottom; saveLineMeta();
+  lcounter.rebase(lineMeta.gap); lcounter.forceArm(); autoShiftSum = 0;
+  if (phase === "counting") logFrame({t: Math.round(performance.now() - logT0), ev: "realign", top: lines.top, bot: lines.bottom});
+  msg("線を今の位置に合わせ直しました", "good"); holdUntil = performance.now() + 2000;
+  speakText("線をなおしました");
+}
+
+/* ---- 声・ボタンで1回たす／へらす ---- */
+function addOne(fromVoice){
+  setCount(session + 1); addToday(1);
+  if (phase === "counting" && $("mode").value === "line") lcounter.forceArm();   // 止まっていた数えを動かし直す
+  if (phase === "counting") logFrame({t: Math.round(performance.now() - logT0), ev: fromVoice ? "v+" : "b+"});
+  if (fromVoice) { msg("1回たしました（" + session + " 回）", "good"); holdUntil = performance.now() + 1500; speakText("ついか、" + session); }
+}
+function subOne(fromVoice){
+  if (session <= 0) return;
+  setCount(session - 1); addToday(-1);
+  if (phase === "counting") logFrame({t: Math.round(performance.now() - logT0), ev: fromVoice ? "v-" : "b-"});
+  if (fromVoice) { msg("1回へらしました（" + session + " 回）", "good"); holdUntil = performance.now() + 1500; speakText("へらして、" + session); }
 }
 
 /* ---- 自分に合わせる ---- */
@@ -948,6 +1070,8 @@ async function calibrate(){
       return;
     }
     setLines(res.top, res.bottom);
+    lineMeta = {range: res.rest - res.reach, gap: res.rest - lines.bottom}; saveLineMeta();
+    lcounter.setMeta(lineMeta.range, lineMeta.gap); autoShiftSum = 0;
     $("calibStatus").textContent = "線の位置を合わせました（" + res.reps + "回分から）";
     finish("線の位置を合わせました", "good");
     speakText("合わせました");
@@ -970,7 +1094,11 @@ async function calibrate(){
   var ca = computeCalibration(lying, ups);
   var ch = computeHeightCalibration(lyY, lyLen, upY);
   var cl = computeLineCalibration(lyF, upF);
-  if (cl.ok) setLines(cl.top, cl.bottom);
+  if (cl.ok) {
+    setLines(cl.top, cl.bottom);
+    lineMeta = {range: cl.rest - cl.reach, gap: cl.rest - lines.bottom}; saveLineMeta();
+    lcounter.setMeta(lineMeta.range, lineMeta.gap); autoShiftSum = 0;
+  }
   if (!ca.ok && !ch.ok && !cl.ok) {
     $("calibStatus").textContent = "";
     finish("うまく測れませんでした。もう一度お試しください", "bad");
@@ -1019,7 +1147,7 @@ var frameDt = 0, lastFrameAt = 0, fpsAvg = 0;
 var lastHead = null, lastHeadAt = 0;   // 頭が一瞬見えなくなったときに、直前の位置を少しのあいだ使う
 var headRel = null;
 /* 動きの記録（うまく数えられないときに、原因を調べるため。スマホの中だけに残り、自動ではどこにも送らない） */
-var APP_VER = "261014.1";   // 版の番号（年月日＋その日の何回目。261012.3＝26年10月12日の3回目）。画面の左下にも出す
+var APP_VER = "261021.1";   // 版の番号（年月日＋その日の何回目。261012.3＝26年10月12日の3回目）。画面の左下にも出す
 var frameLog = [], logT0 = 0;
 function logFrame(o){ if (frameLog.length < 30000) frameLog.push(o); }
 function saveMotionLog(){
@@ -1115,6 +1243,7 @@ function handle(res){
     }
   }
   var gHead = toG(ref.x / W);   // 頭の前後の位置（小さいほど前）
+  pushRecentG(gHead, performance.now());
   if (calibSink) calibSink(a, tilt, pts[0].y, tlen, gHead);
   if (phase !== "counting") {
     if (mode === "line") angleEl.textContent = lineInfo(gHead, headAxis);
@@ -1125,9 +1254,10 @@ function handle(res){
   var r;
   if (mode === "line") {
     // 線で数えるときは「立ち上がり」の取り消しはしない（腹筋くんで腰の点が跳ぶと、正しい1回まで取り消してしまうため）
-    r = lcounter.update({y: gHead, hipY: pts[1].y, len: 0, top: lines.top, bottom: lines.bottom, t: performance.now(), dt: frameDt});
+    r = lcounter.update({y: gHead, top: lines.top, bottom: lines.bottom, t: performance.now(), dt: frameDt});
     logFrame({t: Math.round(performance.now() - logT0), g: +gHead.toFixed(3), x: +(ref.x / W).toFixed(3), y: +(ref.y / H).toFixed(3), dir: fwdDir, hip: +(pts[1].y / H).toFixed(3), src: headSrc,
-      st: r.state === "up" ? 1 : 0, ev: r.counted ? "c" : (r.rejected ? "r" : ""), top: lines.top, bot: lines.bottom, fps: Math.round(fpsAvg)});
+      st: r.state === "up" ? 1 : 0, ev: r.counted ? (r.how === "swing" ? "cs" : "c") : "", top: +lines.top.toFixed(3), bot: +lines.bottom.toFixed(3), sh: r.shift ? +r.shift.toFixed(3) : undefined, fps: Math.round(fpsAvg)});
+    if (r.shift) shiftLines(r.shift);   // 体がすべった分だけ線を動かす
     angleEl.textContent = lineInfo(gHead, headAxis);
   } else if (mode === "height") {
     r = hcounter.update({shoulderY: pts[0].y, hipY: pts[1].y, len: tlen});
@@ -1208,13 +1338,15 @@ function drawLines(){
 }
 function lineInfo(f, isHead){
   var where = f <= lines.top ? "前の線より前" : f >= lines.bottom ? "後ろの線より後ろ" : "線のあいだ";
-  return (isHead ? "頭の位置：" : "肩の位置（頭が見えません）：") + where + (fpsAvg ? "　速さ " + Math.round(fpsAvg) + "コマ/秒" : "");
+  var moved = Math.abs(autoShiftSum) >= 0.02 ? "　線を自動で" + (autoShiftSum < 0 ? "前へ" : "後ろへ") + Math.round(Math.abs(autoShiftSum) * 100) + "％" : "";
+  return (isHead ? "頭の位置：" : "肩の位置（頭が見えません）：") + where + moved + (fpsAvg ? "　速さ " + Math.round(fpsAvg) + "コマ/秒" : "");
 }
 var LINE_STEP = 0.03;
-$("topUp").addEventListener("click", function(){ setLines(lines.top - LINE_STEP, lines.bottom); });
-$("topDn").addEventListener("click", function(){ setLines(lines.top + LINE_STEP, Math.max(lines.bottom, lines.top + LINE_STEP + 0.05)); });
-$("botUp").addEventListener("click", function(){ setLines(Math.min(lines.top, lines.bottom - LINE_STEP - 0.05), lines.bottom - LINE_STEP); });
-$("botDn").addEventListener("click", function(){ setLines(lines.top, lines.bottom + LINE_STEP); });
+$("topUp").addEventListener("click", function(){ setLines(lines.top - LINE_STEP, lines.bottom, "manual"); });
+$("topDn").addEventListener("click", function(){ setLines(lines.top + LINE_STEP, Math.max(lines.bottom, lines.top + LINE_STEP + 0.05), "manual"); });
+$("botUp").addEventListener("click", function(){ setLines(Math.min(lines.top, lines.bottom - LINE_STEP - 0.05), lines.bottom - LINE_STEP, "manual"); });
+$("botDn").addEventListener("click", function(){ setLines(lines.top, lines.bottom + LINE_STEP, "manual"); });
+$("realignBtn").addEventListener("click", function(){ realignNow(); });
 // 画面の線を指で左右に動かす
 var dragging = null;
 function pointerG(e){
@@ -1234,13 +1366,14 @@ stage.addEventListener("pointerdown", function(e){
 stage.addEventListener("pointermove", function(e){
   if (!dragging) return;
   var f = pointerG(e);
-  if (dragging === "top") setLines(Math.min(f, lines.bottom - 0.05), lines.bottom);
-  else setLines(lines.top, Math.max(f, lines.top + 0.05));
+  if (dragging === "top") setLines(Math.min(f, lines.bottom - 0.05), lines.bottom, "manual");
+  else setLines(lines.top, Math.max(f, lines.top + 0.05), "manual");
 });
 ["pointerup", "pointercancel"].forEach(function(t){ stage.addEventListener(t, function(){ dragging = null; }); });
 function updateModeUI(){
   var line = $("mode").value === "line";
   $("lineRow").hidden = !line;
+  $("realignRow").hidden = !(line && running);
   stage.classList.toggle("drag", line);
 }
 function leaveLandscape(){
@@ -1258,8 +1391,8 @@ startBtn.addEventListener("click", function(){
 quitBtn.addEventListener("click", function(){ if (!busy) { stop("やめました"); leaveLandscape(); } });
 calibBtn.addEventListener("click", calibrate);
 pauseBtn.addEventListener("click", function(){ phase === "paused" ? resume() : pause(); });
-$("plus").addEventListener("click", function(){ setCount(session + 1); addToday(1); });
-$("minus").addEventListener("click", function(){ if (session > 0) { setCount(session - 1); addToday(-1); } });
+$("plus").addEventListener("click", function(){ addOne(false); });
+$("minus").addEventListener("click", function(){ subOne(false); });
 $("reset").addEventListener("click", function(){ setCount(0); resetCounters(); msg("今回を0に戻しました（今日の合計はそのままです）"); });
 $("mode").addEventListener("change", function(){ lsSet("situp-mode", $("mode").value); resetCounters(); updateModeUI(); });
 $("zoom").addEventListener("change", async function(){
