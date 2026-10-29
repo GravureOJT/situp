@@ -88,8 +88,8 @@ ol{margin:0;padding-left:1.3em;line-height:1.8;color:var(--sub)}
 </style>
 </head>
 <body>
-<h1>腹筋カウンター <small style="font-size:.5em;opacity:.7">版番号 261021.1</small></h1>
-<div id="verTag" style="position:fixed;left:6px;bottom:4px;z-index:9999;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;pointer-events:none">版番号 261021.1</div>
+<h1>腹筋カウンター <small style="font-size:.5em;opacity:.7">版番号 261029.1</small></h1>
+<div id="verTag" style="position:fixed;left:6px;bottom:4px;z-index:9999;font-size:12px;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;pointer-events:none">版番号 261029.1</div>
 
 <div class="top">
 <div class="left">
@@ -664,15 +664,37 @@ function renderLog(){
 /* ---- 声 ---- */
 var calibDoneAt = -1e9;   // 合わせ終わった時刻（終わった直後に聞き違えて、もう一度始めないため）
 var muteUntil = 0;   // アプリ自身の声を命令と聞き違えないため
+/* 数字を日本語の読み（ひらがな）にする。声が「11」を英語で読まないように（0〜9999） */
+var JA_DIG = ["", "いち", "に", "さん", "よん", "ご", "ろく", "なな", "はち", "きゅう"];
+function jaNum(n){
+n = Math.floor(n);
+if (!(n >= 0) || n > 9999) return String(n);
+if (n === 0) return "ぜろ";
+var th = Math.floor(n / 1000), h = Math.floor(n / 100) % 10, t = Math.floor(n / 10) % 10, o = n % 10, out = "";
+if (th) out += th === 1 ? "せん" : th === 3 ? "さんぜん" : th === 8 ? "はっせん" : JA_DIG[th] + "せん";
+if (h) out += h === 1 ? "ひゃく" : h === 3 ? "さんびゃく" : h === 6 ? "ろっぴゃく" : h === 8 ? "はっぴゃく" : JA_DIG[h] + "ひゃく";
+if (t) out += t === 1 ? "じゅう" : JA_DIG[t] + "じゅう";
+if (o) out += JA_DIG[o];
+return out;
+}
+function jaDigits(s){ return String(s).replace(/\d+/g, function(m){ return jaNum(parseInt(m, 10)); }); }
 function speakText(t){
-  if ($("voice").value !== "on" || !("speechSynthesis" in window)) return;
-  muteUntil = performance.now() + 900 + String(t).length * 220;
-  try {
-    speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(String(t));
-    u.lang = "ja-JP"; u.rate = 1.15;
-    speechSynthesis.speak(u);
-  } catch(e){}
+if ($("voice").value !== "on" || !("speechSynthesis" in window)) return;
+// 数字は日本語の読みにして読ませる（「11」を英語で読まないように）
+var s = jaDigits(t);
+muteUntil = performance.now() + 900 + s.length * 220;
+try {
+speechSynthesis.cancel();
+var u = new SpeechSynthesisUtterance(s);
+u.lang = "ja-JP"; u.rate = 1.15;
+try {
+var vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
+for (var i = 0; i < vs.length; i++) {
+if (/^ja/i.test(String(vs[i].lang).replace("_", "-"))) { u.voice = vs[i]; break; }
+}
+} catch(e){}
+speechSynthesis.speak(u);
+} catch(e){}
 }
 function speak(n){ speakText(n); }
 function todayTotal(){ return loadLog()[todayKey()] || 0; }
@@ -1147,7 +1169,7 @@ var frameDt = 0, lastFrameAt = 0, fpsAvg = 0;
 var lastHead = null, lastHeadAt = 0;   // 頭が一瞬見えなくなったときに、直前の位置を少しのあいだ使う
 var headRel = null;
 /* 動きの記録（うまく数えられないときに、原因を調べるため。スマホの中だけに残り、自動ではどこにも送らない） */
-var APP_VER = "261021.1";   // 版の番号（年月日＋その日の何回目。261012.3＝26年10月12日の3回目）。画面の左下にも出す
+var APP_VER = "261029.1";   // 版の番号（年月日＋その日の何回目。261012.3＝26年10月12日の3回目）。画面の左下にも出す
 var frameLog = [], logT0 = 0;
 function logFrame(o){ if (frameLog.length < 30000) frameLog.push(o); }
 function saveMotionLog(){
